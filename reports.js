@@ -218,7 +218,7 @@ function drawSet() {
       list.map(function (c) { return '<tr data-code="' + esc(c.code) + '"><td><label class="switch"><input type="checkbox" data-k="show"' + (c.show ? ' checked' : '') + ' aria-label="แสดง ' + esc(c.code) + '"><span></span></label></td><td><span class="code">' + esc(c.code) + '</span></td><td><input type="text" data-k="short" value="' + esc(c.short) + '" maxlength="40" style="width:150px" aria-label="ชื่อย่อ ' + esc(c.code) + '"></td><td class="small muted">' + esc(c.name) + '<br>' + esc(c.group) + '</td><td class="num"><input type="number" data-k="order" value="' + (c.order < 999 ? c.order : '') + '" style="width:64px" aria-label="ลำดับ ' + esc(c.code) + '"></td><td class="num">' + fmt(c.vn, 0) + '</td><td class="small muted">' + (c.last ? esc(thDate(c.last)) : '–') + '</td></tr>'; }).join('') + '</tbody></table></div>' + saveBtn('sv');
     $('#sv').onclick = function () {
       var out = $$('tr[data-code]', b).map(function (tr) { return { code: tr.getAttribute('data-code'), show: $('[data-k=show]', tr).checked, short: $('[data-k=short]', tr).value, order: $('[data-k=order]', tr).value }; });
-      api('saveClinics', { list: out, _rid: rid() }).then(function (r) { toast('บันทึกแล้ว ' + r.saved + ' คลินิก'); forget('get'); return refreshBoot(); }).catch(function (e) { toast(e.message, true); });
+      busy($('#sv'), api('saveClinics', { list: out, _rid: rid() }), 'กำลังบันทึก…').then(function (r) { toast('บันทึกแล้ว ' + r.saved + ' คลินิก'); forget('get'); return refreshBoot(); }).catch(function (e) { toast(e.message, true); });
     };
   } else if (t === 'items') {
     var its = d.items.slice().sort(function (a, b2) { return a.order - b2.order; });
@@ -234,7 +234,7 @@ function drawSet() {
       $$('[data-iu]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-iu'); var tmp = its[i]; its[i] = its[i - 1]; its[i - 1] = tmp; draw(); }; });
       $$('[data-idn]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-idn'); var tmp = its[i]; its[i] = its[i + 1]; its[i + 1] = tmp; draw(); }; });
       $('#niAdd').onclick = function () { var nm = $('#niName').value.trim(); if (!nm) return; its.push({ id: '', name: nm, col: 2, active: true, custom: true }); draw(); };
-      $('#sv').onclick = function () { api('saveItems', { list: its, _rid: rid() }).then(function (r) { toast('บันทึกแล้ว ' + r.saved + ' รายการ'); forget('getAdmin'); return refreshBoot().then(pageSet); }).catch(function (e) { toast(e.message, true); }); };
+      $('#sv').onclick = function () { busy($('#sv'), api('saveItems', { list: its, _rid: rid() }), 'กำลังบันทึก…').then(function (r) { toast('บันทึกแล้ว ' + r.saved + ' รายการ'); forget('getAdmin'); return refreshBoot().then(pageSet); }).catch(function (e) { toast(e.message, true); }); };
     };
     draw();
   } else if (t === 'pos') {
@@ -248,7 +248,7 @@ function drawSet() {
       $$('[data-pn]', b).forEach(function (x) { x.oninput = function () { ps[+x.getAttribute('data-pn')].short = x.value; }; });
       $$('[data-pu]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-pu'), tmp = ps[i]; ps[i] = ps[i - 1]; ps[i - 1] = tmp; drawP(); }; });
       $$('[data-pd]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-pd'), tmp = ps[i]; ps[i] = ps[i + 1]; ps[i + 1] = tmp; drawP(); }; });
-      $('#sv').onclick = function () { api('savePositions', { list: ps, _rid: rid() }).then(function (r) { toast('บันทึกแล้ว ' + r.saved + ' ตำแหน่ง'); forget('getAdmin'); return refreshBoot(); }).catch(function (e) { toast(e.message, true); }); };
+      $('#sv').onclick = function () { busy($('#sv'), api('savePositions', { list: ps, _rid: rid() }), 'กำลังบันทึก…').then(function (r) { toast('บันทึกแล้ว ' + r.saved + ' ตำแหน่ง'); forget('getAdmin'); return refreshBoot(); }).catch(function (e) { toast(e.message, true); }); };
     };
     drawP();
   } else if (t === 'users') {
@@ -266,7 +266,7 @@ function drawSet() {
         '<button class="btn btn-brand" type="submit" style="align-self:flex-end">บันทึก</button></form>', '', 'sm');
       $('#uf', m).onsubmit = function (e) {
         e.preventDefault();
-        api('saveUser', { username: $('#uu', m).value, name: $('#un', m).value, role: $('#ur', m).value, active: isNew ? true : $('#ua', m).checked, _rid: rid() }).then(function (r) {
+        busy($('#uf button[type=submit]', m), api('saveUser', { username: $('#uu', m).value, name: $('#un', m).value, role: $('#ur', m).value, active: isNew ? true : $('#ua', m).checked, _rid: rid() }), 'กำลังบันทึก…').then(function (r) {
           m.close(); forget('getAdmin'); if (r.tempPassword) showTemp(r.username, r.tempPassword); else toast('บันทึกแล้ว'); pageSet();
         }).catch(function (err) { toast(err.message, true); });
       };
@@ -275,40 +275,41 @@ function drawSet() {
     $$('[data-ue]', b).forEach(function (x) { x.onclick = function () { userForm(d.users.filter(function (u) { return u.username === x.getAttribute('data-ue'); })[0]); }; });
     $$('[data-ur]', b).forEach(function (x) { x.onclick = function () {
       var u = x.getAttribute('data-ur'), m = modal('ตั้งรหัสผ่านใหม่', '<p>ตั้งรหัสผ่านชั่วคราวใหม่ให้ <b>' + esc(u) + '</b>? ผู้ใช้จะออกจากระบบทุกเครื่องและต้องเปลี่ยนรหัสตอนเข้าครั้งถัดไป</p>', '<button class="btn" data-close>ยกเลิก</button><button class="btn btn-brand" id="rpok">ตั้งรหัสใหม่</button>', 'sm');
-      $('#rpok', m).onclick = function () { api('resetPassword', { username: u, _rid: rid() }).then(function (r) { m.close(); showTemp(r.username, r.tempPassword); }).catch(function (e) { toast(e.message, true); }); };
+      $('#rpok', m).onclick = function () { busy($('#rpok', m), api('resetPassword', { username: u, _rid: rid() }), 'กำลังตั้ง…').then(function (r) { m.close(); showTemp(r.username, r.tempPassword); }).catch(function (e) { toast(e.message, true); }); };
     }; });
   } else if (t === 'conn') {
     var c = d.conn;
     b.innerHTML = '<div style="display:flex;flex-direction:column;gap:14px;max-width:760px">' +
       '<label class="field" for="capi">ลิงก์ API ยอดผู้ป่วย ({date} = yyyyMMdd)<input id="capi" type="text" value="' + esc(c.apiUrl) + '"></label>' +
-      '<div class="row"><button class="btn" id="tapi">' + IC.refresh + 'ทดสอบ API (เมื่อวาน)</button><span class="small" id="tapiR"></span></div><hr style="border:0;border-top:1px solid var(--line);width:100%">' +
+      '<div class="row"><button class="btn" id="tapi">' + IC.refresh + 'ทดสอบ API</button><span class="small" id="tapiR"></span></div><hr style="border:0;border-top:1px solid var(--line);width:100%">' +
       '<label class="field" for="cduty">ลิงก์ /exec ของ SMC Duty<input id="cduty" type="text" value="' + esc(c.smcDutyUrl) + '" placeholder="https://script.google.com/macros/s/…/exec"></label>' +
       '<label class="field" for="ckey">รหัสลับร่วมกับ SMC Duty (DAILY_FEED_KEY) ' + (c.dutyKeySet ? '<span class="chip ok">ตั้งแล้ว</span>' : '<span class="chip warn">ยังไม่ได้ตั้ง</span>') + '<input id="ckey" type="password" autocomplete="off" placeholder="' + (c.dutyKeySet ? 'เว้นว่าง = ใช้รหัสเดิม' : 'วางรหัสลับ') + '"></label>' +
-      '<div class="row"><button class="btn btn-sm" id="gkey">' + IC.key + 'สร้างรหัสลับใหม่</button><span class="xs muted">สร้างแล้วนำไปใส่ใน SMC Duty › Script Properties › DAILY_FEED_KEY ด้วย</span></div><div id="gkeyBox"></div>' +
+      '<div class="row"><button class="btn btn-sm" id="gkey">' + IC.key + 'สร้างรหัสลับใหม่</button><span class="xs muted">สร้างแล้วนำไปวางในไฟล์ DailyFeed ของ SMC Duty ด้วย</span></div><div id="gkeyBox"></div>' +
       '<div class="row"><button class="btn" id="tduty">' + IC.refresh + 'ทดสอบ SMC Duty</button><button class="btn" id="scal">' + IC.cal + 'ซิงก์วันหยุดตอนนี้</button><span class="small" id="tdutyR"></span></div>' +
-      '<dl class="kvlist"><dt>ซิงก์วันหยุดล่าสุด</dt><dd>' + esc(stampTh(c.calendarSyncedAt) || '–') + '</dd><dt>งานกลางคืนล่าสุด</dt><dd class="small">' + esc(c.lastNightly || '–') + '</dd><dt>หลังบ้าน build</dt><dd>' + esc(d.build) + '</dd></dl><hr style="border:0;border-top:1px solid var(--line);width:100%">' +
+      '<dl class="kvlist"><dt>โหมด API</dt><dd>' + (c.apiModeCheckedAt ? (c.apiTodayOnly ? '<span class="chip warn">ส่งเฉพาะยอดวันนี้</span> <span class="xs muted">ระบบเก็บยอดวันนี้ทุก 30 นาที · ดึงย้อนหลังไม่ได้ ขอไอทีให้รับ search_st</span>' : '<span class="chip ok">รับวันที่ ดึงย้อนหลังได้</span>') + ' <span class="xs muted">ตรวจ ' + esc(stampTh(c.apiModeCheckedAt)) + '</span>' : '<span class="muted">ยังไม่ได้ตรวจ (กดทดสอบ API)</span>') + '</dd><dt>ซิงก์วันหยุดล่าสุด</dt><dd>' + esc(stampTh(c.calendarSyncedAt) || '–') + '</dd><dt>งานกลางคืนล่าสุด</dt><dd class="small">' + esc(c.lastNightly || '–') + '</dd><dt>เก็บยอดปิดวันล่าสุด</dt><dd class="small">' + esc(c.lastEvening || '–') + '</dd><dt>หลังบ้าน build</dt><dd>' + esc(d.build) + '</dd></dl><hr style="border:0;border-top:1px solid var(--line);width:100%">' +
       '<label class="field" for="clh">บรรทัดแรกของข้อความไลน์<input id="clh" type="text" value="' + esc(c.lineHeader) + '" maxlength="120"></label>' +
       '<label class="field" for="crt">หัวกระดาษใบรายงาน<input id="crt" type="text" value="' + esc(c.reportTitle) + '" maxlength="160"></label></div>' + saveBtn('sv');
     var res = function (el, r) { $(el).innerHTML = r.ok ? '<span style="color:var(--ok)">✓ ' + r.text + '</span>' : '<span style="color:var(--bad)">✗ ' + esc(r.text) + '</span>'; };
-    $('#tapi').onclick = function () { $('#tapiR').innerHTML = IC.spin.replace('<svg', '<svg width="14" height="14"'); api('testApi', {}).then(function (r) { res('#tapiR', r.ok ? { ok: 1, text: thDate(r.date) + ' ได้ ' + r.rows + ' แถว ผู้ป่วย ' + fmt(r.total, 0) + ' ราย (' + (r.ms / 1000).toFixed(1) + ' วิ)' } : { text: r.error }); }).catch(function (e) { res('#tapiR', { text: e.message }); }); };
-    $('#tduty').onclick = function () { $('#tdutyR').innerHTML = IC.spin.replace('<svg', '<svg width="14" height="14"'); api('testDuty', {}).then(function (r) { res('#tdutyR', r.ok ? { ok: 1, text: 'เชื่อมต่อได้ · วันนี้ ' + r.people + ' คนในตารางเวร · ' + r.positions + ' ตำแหน่ง' } : { text: r.error }); }).catch(function (e) { res('#tdutyR', { text: e.message }); }); };
-    $('#scal').onclick = function () { api('syncCalendar', {}).then(function (r) { toast('ซิงก์วันหยุดแล้ว ' + r.days + ' วัน'); refreshBoot(); }).catch(function (e) { toast(e.message, true); }); };
-    $('#gkey').onclick = function () { api('newDutyKey', {}).then(function (r) { $('#ckey').value = r.key; $('#gkeyBox').innerHTML = '<div class="secret">' + esc(r.key) + '</div><p class="xs muted">คัดลอกรหัสนี้ไปใส่ใน SMC Duty แล้วกดบันทึกด้านล่าง</p>'; }).catch(function (e) { toast(e.message, true); }); };
+    $('#tapi').onclick = function () { $('#tapiR').innerHTML = '<span class="muted">กำลังถาม API 2 วันที่ (วันนี้ + 7 วันก่อน)…</span>'; busy($('#tapi'), api('testApi', {}), 'กำลังทดสอบ…').then(function (r) { res('#tapiR', r.ok ? { ok: 1, text: 'วันนี้ได้ ' + r.rows + ' แถว ผู้ป่วย ' + fmt(r.total, 0) + ' ราย (' + (r.ms / 1000).toFixed(1) + ' วิ) · ' + (r.todayOnly ? '⚠ API ส่งเฉพาะยอดวันนี้ ดึงย้อนหลังไม่ได้' : 'API รับวันที่ ดึงย้อนหลังได้') } : { text: r.error }); forget('getAdmin'); }).catch(function (e) { res('#tapiR', { text: e.message }); }); };
+    $('#tduty').onclick = function () { $('#tdutyR').innerHTML = ''; busy($('#tduty'), api('testDuty', {}), 'กำลังทดสอบ…').then(function (r) { res('#tdutyR', r.ok ? { ok: 1, text: 'เชื่อมต่อได้ · วันนี้ ' + r.people + ' คนในตารางเวร · ' + r.positions + ' ตำแหน่ง' } : { text: r.error }); }).catch(function (e) { res('#tdutyR', { text: e.message }); }); };
+    $('#scal').onclick = function () { busy($('#scal'), api('syncCalendar', {}), 'กำลังซิงก์…').then(function (r) { toast('ซิงก์วันหยุดแล้ว ' + r.days + ' วัน'); refreshBoot(); }).catch(function (e) { toast(e.message, true); }); };
+    $('#gkey').onclick = function () { busy($('#gkey'), api('newDutyKey', {})).then(function (r) { $('#ckey').value = r.key; $('#gkeyBox').innerHTML = '<div class="secret">' + esc(r.key) + '</div><p class="xs muted">คัดลอกรหัสนี้ไปวางในไฟล์ DailyFeed ของ SMC Duty (บรรทัด var DAILY_FEED_KEY = \'…\') แล้วกดบันทึกด้านล่าง</p>'; }).catch(function (e) { toast(e.message, true); }); };
     $('#sv').onclick = function () {
       var p = { apiUrl: $('#capi').value, smcDutyUrl: $('#cduty').value, lineHeader: $('#clh').value, reportTitle: $('#crt').value, _rid: rid() };
       if ($('#ckey').value) p.smcDutyKey = $('#ckey').value;
-      api('saveConnection', p).then(function () { toast('บันทึกแล้ว'); forget('getAdmin'); refreshBoot().then(pageSet); }).catch(function (e) { toast(e.message, true); });
+      busy($('#sv'), api('saveConnection', p), 'กำลังบันทึก…').then(function () { toast('บันทึกแล้ว'); forget('getAdmin'); refreshBoot().then(pageSet); }).catch(function (e) { toast(e.message, true); });
     };
   } else if (t === 'backfill') {
     var bf = d.backfill, total = datesIn(bf.from, bf.today).length, have = Math.min(total, bf.daysOk), p2 = total ? have / total * 100 : 0;
-    var st = bf.status === 'done' ? '<span class="chip ok">' + IC.check + 'ครบแล้ว</span>' : bf.status === 'running' || bf.status === 'retry' ? '<span class="chip warn">' + IC.spin.replace('<svg', '<svg width="12" height="12"') + ' กำลังดึง</span>' : '<span class="chip idle">ยังไม่เริ่ม</span>';
+    var st = bf.status === 'blocked' ? '<span class="chip warn">หยุดไว้: API ส่งเฉพาะยอดวันนี้</span>' : bf.status === 'done' ? '<span class="chip ok">' + IC.check + 'ครบแล้ว</span>' : bf.status === 'running' || bf.status === 'retry' ? '<span class="chip warn">' + IC.spin.replace('<svg', '<svg width="12" height="12"') + ' กำลังดึง</span>' : '<span class="chip idle">ยังไม่เริ่ม</span>';
     b.innerHTML = '<div style="display:flex;flex-direction:column;gap:14px;max-width:720px"><div class="row" style="justify-content:space-between"><b>ยอดผู้ป่วยย้อนหลังในระบบ</b>' + st + '</div>' +
       '<div class="progress" role="progressbar" aria-valuenow="' + Math.round(p2) + '" aria-valuemin="0" aria-valuemax="100"><i style="width:' + p2.toFixed(1) + '%"></i></div>' +
       '<dl class="kvlist"><dt>ช่วงที่ต้องการ</dt><dd>' + esc(thDate(bf.from)) + ' – ' + esc(thDate(bf.today)) + ' (' + fmt(total, 0) + ' วัน)</dd><dt>มีข้อมูลแล้ว</dt><dd>' + fmt(have, 0) + ' วัน (' + fmt(p2) + '%) · เก่าสุด ' + esc(bf.firstDate ? thDate(bf.firstDate) : '–') + '</dd>' +
       (bf.status && bf.status !== 'done' ? '<dt>กำลังดึงถึงวันที่</dt><dd>' + esc(bf.cursor ? thDate(bf.cursor) : '–') + '</dd>' : '') + '<dt>ดึงไม่สำเร็จ (จะลองใหม่)</dt><dd>' + bf.errors + ' วัน</dd></dl>' +
+      (bf.status === 'blocked' ? '<div class="banner warn">API ของไอทีตอนนี้ส่งเฉพาะยอดวันนี้ (ส่งวันที่ไปเท่าไรก็ได้ข้อมูลชุดเดิม) จึงดึงย้อนหลังไม่ได้ · ระบบเก็บยอดวันนี้ทุก 30 นาทีไปก่อน · เมื่อไอทีแก้ให้รับวันที่ ระบบตรวจพบเองตอนตี 1:30 แล้วดึงย้อนหลังต่ออัตโนมัติ</div>' : '') +
       '<p class="small muted" style="margin:0">ระบบดึงเบื้องหลังทุก 10 นาที ครั้งละประมาณ 4 นาที เว้นช่วง 1.5 วินาทีต่อวัน (API ตอบว่างถ้าถามถี่) · ไม่กระทบการใช้งานของพยาบาล</p>' +
       '<form class="row" id="bff"><label class="small" for="bfd">ดึงย้อนหลังตั้งแต่</label><input type="date" id="bfd" value="' + esc(bf.from) + '" min="2020-07-01" max="' + esc(bf.today) + '"><button class="btn" type="submit">เริ่มดึง</button><span class="xs muted">ข้อมูลใน API เริ่มประมาณ ก.ค. 2563</span></form></div>';
-    $('#bff').onsubmit = function (e) { e.preventDefault(); api('startBackfill', { from: $('#bfd').value }).then(function () { toast('เริ่มดึงย้อนหลังแล้ว ระบบทำต่อเบื้องหลัง'); forget('getAdmin'); pageSet(); }).catch(function (er) { toast(er.message, true); }); };
+    $('#bff').onsubmit = function (e) { e.preventDefault(); busy($('#bff button'), api('startBackfill', { from: $('#bfd').value }), 'กำลังเริ่ม…').then(function () { toast('เริ่มดึงย้อนหลังแล้ว ระบบทำต่อเบื้องหลัง'); forget('getAdmin'); pageSet(); }).catch(function (er) { toast(er.message, true); }); };
   }
 }
 function showTemp(u, pw) { modal('รหัสผ่านชั่วคราว', '<p>ผู้ใช้ <b>' + esc(u) + '</b></p><div class="secret" style="font-size:1.3rem;text-align:center">' + esc(pw) + '</div><p class="small muted">แจ้งรหัสนี้ให้ผู้ใช้ทางช่องทางส่วนตัว · แสดงครั้งเดียว · ผู้ใช้ต้องเปลี่ยนรหัสตอนเข้าครั้งแรก</p>', '<button class="btn btn-brand" data-close>รับทราบ</button>', 'sm'); }

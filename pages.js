@@ -21,12 +21,14 @@ function typeName(t) { return { W: 'วันทำการ', S: 'เสาร�
 /* =====================================================================
    หน้ารายงานประจำวัน
    ===================================================================== */
-var DAY = { data: null, roster: null, pend: { procs: {}, fields: {} }, staffDirty: false, saving: false, lastErr: '' };
+var DAY = { data: null, roster: null, pend: { procs: {}, fields: {} }, staffDirty: false, saving: false, lastErr: '', refreshing: false, refreshErr: '', timer: null };
 
 function pageToday() {
   var date = S.date || S.boot.today;
   if (date > S.boot.today) date = S.date = S.boot.today;
-  DAY.data = null; DAY.roster = null;
+  DAY.data = null; DAY.roster = null; DAY.refreshErr = ''; DAY.refreshing = false;
+  clearInterval(DAY.timer);
+  if (date === S.boot.today) DAY.timer = setInterval(function () { if (S.page === 'today' && S.date === date && DAY.data && DAY.data.api.canRefresh && !DAY.refreshing && !document.hidden) refreshApi(date, false); }, 5 * 60000);
   $('#main').innerHTML = banners() + heroSkeleton(date) + '<div class="grid-2"><div class="col"><div class="card skel" style="height:420px"></div></div><div class="col"><div class="card skel" style="height:520px"></div></div></div>';
   var drawn = false;
   api('getDay', { date: date }, {
@@ -35,9 +37,42 @@ function pageToday() {
     if (S.page !== 'today' || S.date !== date) return;
     var had = DAY.data; DAY.data = d;
     if (!had || JSON.stringify(had.api) !== JSON.stringify(d.api) || JSON.stringify(had.entry) !== JSON.stringify(d.entry)) drawDay(drawn);
-    if (d.warn) toast(d.warn, true);
     loadRoster(date);
+    if (d.api.stale) refreshApi(date, false);
   }).catch(function (e) { if (S.page === 'today') { if (!DAY.data) $('#main').innerHTML = banners() + '<div class="card"><div class="empty">' + IC.warn + esc(e.message) + '<div style="margin-top:10px"><button class="btn" onclick="pageToday()">ลองอีกครั้ง</button></div></div></div>'; else toast(e.message, true); } });
+}
+/** ดึงยอดล่าสุดจาก API เบื้องหลัง (หน้าจอใช้งานได้ระหว่างรอ) */
+function refreshApi(date, force, btn) {
+  if (DAY.refreshing && !force) return;
+  DAY.refreshing = true; DAY.refreshErr = ''; drawApiState();
+  var p = api('refreshDay', { date: date, force: !!force });
+  if (btn) busy(btn, p, 'กำลังดึง…').catch(function () { });
+  p.then(function (d) {
+    DAY.refreshing = false;
+    if (S.page !== 'today' || S.date !== date || !DAY.data) return;
+    forget('getDay|{"date":"' + date + '"}');
+    var changed = JSON.stringify(DAY.data.api.rows) !== JSON.stringify(d.api.rows);
+    DAY.data.api = d.api; DAY.data.trend = d.trend;
+    DAY.refreshErr = d.warn || '';
+    if (changed) { drawDay(true); if (force) toast('อัปเดตยอดแล้ว ' + (d.api.at || '').slice(11, 16) + ' น.'); } else drawApiState();
+    if (force && !changed && !d.warn) toast('ยอดล่าสุดแล้ว (' + (d.api.at || '').slice(11, 16) + ' น.)');
+  }).catch(function (e) { DAY.refreshing = false; DAY.refreshErr = e.message; drawApiState(); });
+}
+/** สถานะการดึงยอดในแถบหัวและหัวตารางผู้ป่วย */
+function drawApiState() {
+  var d = DAY.data; if (!d) return;
+  var el = $('#apiState'), note = $('#apiNote');
+  var html;
+  if (DAY.refreshing) html = '<span class="live">' + IC.spin.replace('<svg', '<svg width="13" height="13" style="margin-right:6px"') + 'กำลังดึงยอดล่าสุดจากระบบ รพ.…</span>';
+  else if (DAY.refreshErr) html = '<span class="live err" title="' + esc(DAY.refreshErr) + '">' + IC.warn.replace('<svg', '<svg width="13" height="13" style="margin-right:6px"') + esc(DAY.refreshErr.length > 70 ? DAY.refreshErr.slice(0, 70) + '…' : DAY.refreshErr) + '</span>' + (d.api.canRefresh ? '<button class="btn btn-sm hero-btn" id="apiRetry">' + IC.refresh + 'ลองอีกครั้ง</button>' : '');
+  else {
+    var isToday = d.date === S.boot.today, t = d.api.status !== 'ok' ? (/^error/.test(d.api.status) ? 'ดึงยอดไม่สำเร็จ' : 'ยังไม่มีข้อมูลจาก API') : d.api.final ? 'ยอดสุดท้ายของวัน' : (isToday ? 'ยอดสะสมวันนี้ · อัปเดต ' + (d.api.at || '').slice(11, 16) + ' น.' : 'อัปเดต ' + stampTh(d.api.at));
+    html = '<span class="live">' + (isToday && !d.api.final && d.api.status === 'ok' ? '<span class="livedot"></span>' : '') + esc(t) + '</span>' + (d.api.todayOnly && d.date !== S.boot.today && d.api.status !== 'ok' ? '<span class="chip" title="API ของไอทีส่งเฉพาะยอดวันนี้">API ดึงย้อนหลังไม่ได้</span>' : '');
+  }
+  if (el) el.innerHTML = html + dayTypeChip(d.dayType, d.holiday);
+  var r = $('#apiRetry'); if (r) r.onclick = function () { refreshApi(d.date, true, r); };
+  if (note) note.textContent = d.api.status !== 'ok' ? (DAY.refreshing ? 'กำลังดึงข้อมูล…' : 'ยังไม่มีข้อมูลจาก API') : d.api.final ? 'ยอดสุดท้าย · ' + stampTh(d.api.at) : 'อัปเดต ' + (d.api.at || '').slice(11, 16) + ' น. · อัปเดตเองทุก 5 นาที';
+  var br = $('#brefresh'); if (br) br.hidden = !d.api.canRefresh;
 }
 function heroSkeleton(date) {
   return '<section class="hero rise"><div><div class="dt">' + esc(thDate(date, true, true)) + '</div><div class="sub">กำลังดึงยอดล่าสุด…</div><div class="big" style="opacity:.5">—</div></div><div></div><div></div></section>';
@@ -72,7 +107,7 @@ function drawDay(quiet) {
     });
   });
   hidden.forEach(function (r) { tb += '<tr class="ptrow hid"><td></td><td>' + esc(r[1]) + '</td><td><span class="code">' + esc(r[0]) + '</span></td><td class="num">' + r[2] + '</td></tr>'; });
-  var apiNote = !apiOk ? 'ยังไม่มีข้อมูลจาก API' : d.api.final ? 'ยอดสุดท้าย · อัปเดต ' + stampTh(d.api.at) : 'อัปเดต ' + (d.api.at || '').slice(11, 16) + ' น. · ระบบอัปเดตทุก 5 นาที';
+
   // หัตถการ
   var items = activeItems();
   var col = function (c) { return items.filter(function (i) { return i.col === c; }).map(function (i) { return procRow(i, procs[i.id], ed); }).join(''); };
@@ -80,11 +115,10 @@ function drawDay(quiet) {
   main.innerHTML = banners() +
     '<section class="hero' + (quiet ? '' : ' rise') + '" id="hero"></section>' +
     '<div class="grid-2"><div class="col">' +
-      '<section class="card' + (quiet ? '' : ' rise d2') + '" aria-labelledby="h-pt"><div class="card-h"><h3 id="h-pt"><span class="ic">' + IC.users + '</span>ผู้ป่วยแยกแพทย์และคลินิก</h3><div class="row small muted">' + esc(apiNote) +
-        (date >= addDays(S.boot.today, -3) ? ' <button class="btn btn-sm" id="brefresh">' + IC.refresh + 'อัปเดตเดี๋ยวนี้</button>' : '') + '</div></div>' +
+      '<section class="card' + (quiet ? '' : ' rise d2') + '" aria-labelledby="h-pt"><div class="card-h"><h3 id="h-pt"><span class="ic">' + IC.users + '</span>ผู้ป่วยแยกแพทย์และคลินิก</h3><div class="row small muted"><span id="apiNote"></span> <button class="btn btn-sm" id="brefresh">' + IC.refresh + 'อัปเดตเดี๋ยวนี้</button></div></div>' +
         '<div class="card-b tbl-wrap">' + (shown.length ? '<table class="tbl"><thead><tr><th>#</th><th>แพทย์</th><th></th><th class="num">ผู้ป่วย</th></tr></thead><tbody>' + tb + '</tbody><tfoot><tr><td></td><td>รวม ' + order.length + ' คลินิก · แพทย์ ' + Object.keys(nDoc).length + ' ท่าน</td><td></td><td class="num">' + fmt(total, 0) + '</td></tr></tfoot></table>' +
           (hidden.length ? '<p class="xs muted" style="margin:8px 0 0">ขีดฆ่า = คลินิกที่แอดมินซ่อน ไม่นับในยอดรวม</p>' : '')
-          : '<div class="empty">' + IC.inbox + (apiOk ? 'ไม่มีผู้ป่วยนอกเวลาในวันนี้' : 'ยังไม่มีข้อมูลจาก API ของวันนี้') + '</div>') + '</div></section>' +
+          : '<div class="empty">' + IC.inbox + (apiOk ? 'ไม่มีผู้ป่วยนอกเวลาในวันนี้' : DAY.refreshing ? 'กำลังดึงยอดจากระบบโรงพยาบาล…' : d.api.todayOnly && date !== S.boot.today ? 'ไม่มีข้อมูลของวันนี้ในระบบ (API ปัจจุบันส่งเฉพาะยอดวันนี้ ดึงย้อนหลังไม่ได้)' : 'ยังไม่มีข้อมูลจาก API ของวันนี้') + '</div>') + '</div></section>' +
       '<section class="card' + (quiet ? '' : ' rise d3') + '" aria-labelledby="h-oth"><div class="card-h"><h3 id="h-oth"><span class="ic">' + IC.clinic + '</span>ยอดอื่น ๆ และหมายเหตุ</h3></div><div class="card-b" style="display:flex;flex-direction:column;gap:12px">' +
         '<div class="others">' + [['consult', 'Consult แผนกอื่น'], ['nightOpd', 'โอน Night OPD ชั้น 4'], ['admit', 'Admit']].map(function (f) { return '<label class="field" for="f_' + f[0] + '">' + f[1] + '<input id="f_' + f[0] + '" data-field="' + f[0] + '" type="number" min="0" inputmode="numeric" placeholder="0" value="' + esc(curField(f[0])) + '"' + (ed ? '' : ' disabled') + '></label>'; }).join('') + '</div>' +
         '<label class="field" for="f_other">อื่นๆ<input id="f_other" data-field="other" type="text" maxlength="300" value="' + esc(curField('other')) + '"' + (ed ? '' : ' disabled') + '></label>' +
@@ -114,18 +148,18 @@ function procRow(i, v, ed) {
 function drawHero(quiet) {
   var d = DAY.data, date = d.date, total = dayTotal(), rows = dayRows().filter(function (r) { return isShown(r[0]); });
   var nC = {}, nD = {}; rows.forEach(function (r) { nC[r[0]] = 1; nD[r[1]] = 1; });
-  var isToday = date === S.boot.today, liveTxt = d.api.status !== 'ok' ? 'รอข้อมูลจาก API' : d.api.final ? 'ยอดสุดท้ายของวัน' : (isToday ? 'กำลังเปิดคลินิก · ยอดสะสม' : 'ยอดยังอาจเปลี่ยน');
+  var isToday = date === S.boot.today;
   var hero = $('#hero');
   hero.innerHTML = '<svg class="ecg" viewBox="0 0 1200 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0,40 L240,40 L258,40 L270,26 L282,40 L300,40 L312,6 L326,66 L340,40 L360,40 L376,32 L392,40 L640,40 L658,40 L670,26 L682,40 L700,40 L712,6 L726,66 L740,40 L760,40 L776,32 L792,40 L1200,40"/></svg>' +
     '<div><div class="dnav"><button class="iconbtn" id="dprev" aria-label="วันก่อนหน้า">' + IC.prev + '</button><button class="iconbtn" id="dnext" aria-label="วันถัดไป"' + (isToday ? ' disabled' : '') + '>' + IC.next + '</button>' +
       '<input type="date" id="dpick" value="' + date + '" max="' + S.boot.today + '" aria-label="เลือกวันที่">' + (isToday ? '' : '<button class="btn btn-sm" id="dtoday" style="background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25);color:#fff">วันนี้</button>') + '</div>' +
       '<div class="dt" style="margin-top:10px">' + esc(thDate(date, true, true)) + '</div>' +
-      '<div class="row" style="margin-top:4px"><span class="live">' + (isToday && !d.api.final ? '<span class="livedot"></span>' : '') + esc(liveTxt) + '</span>' + dayTypeChip(d.dayType, d.holiday) + '</div>' +
+      '<div class="row" id="apiState" style="margin-top:6px"></div>' +
       '<div class="big" style="margin-top:12px"><span data-count="' + total + '">' + (quiet ? fmt(total, 0) : '0') + '</span><small>ราย</small></div>' +
       '<div class="kv"><div><b>' + Object.keys(nC).length + '</b><span>คลินิก</span></div><div><b>' + Object.keys(nD).length + '</b><span>แพทย์</span></div><div><b id="heroProc">' + fmt(procSum(curProcs()), 0) + '</b><span>หัตถการ</span></div></div></div>' +
     '<div class="spark">' + heroSpark(d.trend || []) + '</div>' +
     '<div class="ringwrap" id="ringwrap"></div>';
-  drawHeroRing();
+  drawHeroRing(); drawApiState();
   if (!quiet) countUp(hero); else $$('[data-count]', hero).forEach(function (el) { el.textContent = fmt(+el.getAttribute('data-count'), 0); });
   $('#dprev').onclick = function () { setDate(addDays(date, -1)); };
   $('#dnext').onclick = function () { if (!isToday) setDate(addDays(date, 1)); };
@@ -178,11 +212,7 @@ window.addEventListener('beforeunload', function (e) { if (hasPending() || DAY.s
 
 function bindDay() {
   var main = $('#main'), date = DAY.data.date;
-  var br = $('#brefresh'); if (br) br.onclick = function () {
-    br.disabled = true; br.innerHTML = IC.spin + 'กำลังดึง…';
-    api('getDay', { date: date, force: true }).then(function (d) { if (S.date !== date) return; forget('getDay|{"date":"' + date + '"}'); DAY.data.api = d.api; DAY.data.trend = d.trend; drawDay(true); toast('อัปเดตยอดแล้ว ' + (d.api.at || '').slice(11, 16) + ' น.'); if (d.warn) toast(d.warn, true); })
-      .catch(function (e) { toast(e.message, true); br.disabled = false; });
-  };
+  var br = $('#brefresh'); if (br) br.onclick = function () { refreshApi(date, true, br); };
   if (!canEdit()) return addDayTools();
   var onProc = function (inp) {
     var id = inp.getAttribute('data-proc'), v = inp.value === '' ? 0 : Math.max(0, Math.round(+inp.value || 0));
@@ -209,7 +239,7 @@ function bindDay() {
   });
   var af = $('#addItem'); if (af) af.onsubmit = function (e) {
     e.preventDefault(); var nm = $('#newItem').value.trim(); if (!nm) return;
-    api('addItem', { name: nm, _rid: rid() }).then(function (r) {
+    busy($('#addItem button'), api('addItem', { name: nm, _rid: rid() })).then(function (r) {
       if (!r.existed) S.boot.items.push({ id: r.id, name: r.name, col: 2, order: 9999, active: true, custom: true });
       else S.boot.items.forEach(function (i) { if (i.id === r.id) i.active = true; });
       store('boot', S.boot); flushSave(); drawDay(true);
@@ -256,7 +286,7 @@ function drawStaff() {
   $$('[data-sdel]', body).forEach(function (b) { b.onclick = function () { staffList().splice(+b.getAttribute('data-sdel'), 1); DAY.staffDirty = true; drawStaff(); drawHeroRing(); saveStaff(); }; });
   $$('[data-sadd]', body).forEach(function (b) { b.onclick = function () { addPerson(b.getAttribute('data-sadd')); }; });
   var rd = $('#reDuty'); if (rd) rd.onclick = function () {
-    api('saveStaff', { date: DAY.data.date, reset: true, list: [], _rid: rid() }).then(function () { DAY.roster = null; forget('getRoster'); loadRoster(DAY.data.date, true); toast('ดึงรายชื่อจาก SMC Duty ใหม่แล้ว'); }).catch(function (e) { toast(e.message, true); });
+    busy(rd, api('saveStaff', { date: DAY.data.date, reset: true, list: [], _rid: rid() }), 'กำลังดึง…').then(function () { DAY.roster = null; forget('getRoster'); loadRoster(DAY.data.date, true); toast('ดึงรายชื่อจาก SMC Duty ใหม่แล้ว'); }).catch(function (e) { toast(e.message, true); });
   };
 }
 function addPerson(posId) {
@@ -351,11 +381,11 @@ function openImage() {
   };
   var fname = 'รายงานประจำวัน_' + DAY.data.date + (mode === 'form' ? '_แบบฟอร์ม' : '') + '.png';
   $('#imgsave', m).onclick = function () {
-    render().then(function (cv) { var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = fname; document.body.appendChild(a); a.click(); a.remove(); toast('บันทึกภาพแล้ว'); })
+    busy($('#imgsave', m), render()).then(function (cv) { var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = fname; document.body.appendChild(a); a.click(); a.remove(); toast('บันทึกภาพแล้ว'); })
       .catch(function (e) { toast(e.message || 'สร้างภาพไม่สำเร็จ', true); });
   };
   $('#imgcopy', m).onclick = function () {
-    render().then(function (cv) { return new Promise(function (res, rej) { cv.toBlob(function (b) { if (!b || !window.ClipboardItem || !navigator.clipboard) return rej(new Error('เบราว์เซอร์นี้คัดลอกภาพไม่ได้ ใช้ปุ่มบันทึกภาพแทน')); navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(res, rej); }); }); })
+    busy($('#imgcopy', m), render()).then(function (cv) { return new Promise(function (res, rej) { cv.toBlob(function (b) { if (!b || !window.ClipboardItem || !navigator.clipboard) return rej(new Error('เบราว์เซอร์นี้คัดลอกภาพไม่ได้ ใช้ปุ่มบันทึกภาพแทน')); navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(res, rej); }); }); })
       .then(function () { toast('คัดลอกภาพแล้ว วางในไลน์ได้เลย (Ctrl+V)'); }).catch(function (e) { toast(e.message || 'คัดลอกภาพไม่สำเร็จ', true); });
   };
 }

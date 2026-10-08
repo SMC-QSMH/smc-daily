@@ -60,6 +60,8 @@ var IC = {
   xls: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11l5 6M14 11l-5 6"/></svg>',
   spin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path class="sp" style="transform-origin:center" d="M12 3a9 9 0 1 0 9 9"/></svg>',
   warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.6 7.5C3.8 9.3 2 12 2 12s3.6 6 10 6c1.6 0 3-.4 4.3-1M9.9 10a3 3 0 0 0 4.2 4.1"/></svg>',
   inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg>'
 };
 
@@ -70,26 +72,58 @@ var S = { token: null, me: null, boot: null, page: 'today', date: null };
 var NET = { active: 0, queue: [], MAX: 4, busy: 0 };
 function netSlot() { return new Promise(function (res) { if (NET.active < NET.MAX) { NET.active++; res(); } else NET.queue.push(res); }); }
 function netDone() { var n = NET.queue.shift(); if (n) n(); else NET.active = Math.max(0, NET.active - 1); }
-function netBar(d) { NET.busy += d; var b = $('#netbar'); if (b) b.hidden = NET.busy <= 0; }
-function isRead(a) { return /^(get|bootstrap|ping|login)/.test(a); }
+var ACT_TH = { login: 'กำลังเข้าสู่ระบบ', bootstrap: 'กำลังโหลดข้อมูลตั้งต้น', getDay: 'กำลังโหลดรายงาน', refreshDay: 'กำลังดึงยอดล่าสุดจากระบบ รพ.', getRoster: 'กำลังดึงตารางเวรจาก SMC Duty', saveEntry: 'กำลังบันทึก', saveStaff: 'กำลังบันทึกรายชื่อ', addItem: 'กำลังเพิ่มรายการ',
+  getMonth: 'กำลังโหลดปฏิทิน', getReport: 'กำลังสรุปรายงาน', getDashboard: 'กำลังสรุปแดชบอร์ด', getAdmin: 'กำลังโหลดการตั้งค่า', testApi: 'กำลังทดสอบ API', testDuty: 'กำลังทดสอบ SMC Duty', getAudit: 'กำลังโหลดประวัติ' };
+var ACTS = {}, actTimer = null;
+function netBar(d, action) {
+  NET.busy += d; if (action) { ACTS[action] = (ACTS[action] || 0) + d; if (ACTS[action] <= 0) delete ACTS[action]; }
+  var b = $('#netbar'); if (b) b.hidden = NET.busy <= 0;
+  clearTimeout(actTimer);
+  var pill = $('#activity');
+  if (NET.busy <= 0) { if (pill) pill.hidden = true; return; }
+  actTimer = setTimeout(function () {   // แสดงเมื่อรอเกิน 0.35 วินาที (ไม่กะพริบเมื่อเร็ว)
+    if (NET.busy <= 0) return;
+    if (!pill) { pill = document.createElement('div'); pill.id = 'activity'; pill.className = 'activity'; pill.setAttribute('role', 'status'); document.body.appendChild(pill); }
+    var names = Object.keys(ACTS).map(function (a) { return ACT_TH[a] || 'กำลังทำงาน'; });
+    pill.innerHTML = IC.spin + '<span>' + esc(names[0] || 'กำลังทำงาน') + '…' + (names.length > 1 ? ' (+' + (names.length - 1) + ')' : '') + '</span>';
+    pill.hidden = false;
+  }, 350);
+}
+/** ปุ่มที่กดแล้วรอเซิร์ฟเวอร์: ปิดปุ่ม + หมุน + คืนค่าเดิมเมื่อเสร็จ */
+function busy(btn, promise, label) {
+  if (!btn) return promise;
+  var html = btn.innerHTML, w = btn.offsetWidth; btn.disabled = true; btn.classList.add('is-busy'); btn.style.minWidth = w + 'px';
+  btn.innerHTML = IC.spin + (label ? '<span>' + esc(label) + '</span>' : '');
+  var done = function () { btn.disabled = false; btn.classList.remove('is-busy'); btn.innerHTML = html; btn.style.minWidth = ''; };
+  return Promise.resolve(promise).then(function (x) { done(); return x; }, function (e) { done(); throw e; });
+}
+/** ปุ่มดู/ซ่อนรหัสผ่าน */
+function pwField(id, label, ac, extra) {
+  return '<label class="field" for="' + id + '">' + label + '<span class="pw"><input id="' + id + '" type="password" autocomplete="' + ac + '" ' + (extra || '') + ' required><button type="button" class="pweye" data-eye="' + id + '" aria-label="แสดงรหัสผ่าน" title="แสดง/ซ่อนรหัสผ่าน">' + IC.eye + '</button></span></label>';
+}
+function bindEyes(root) {
+  $$('[data-eye]', root).forEach(function (b) { b.onclick = function () { var i = $('#' + b.getAttribute('data-eye'), root), show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.innerHTML = show ? IC.eyeOff : IC.eye; b.setAttribute('aria-label', show ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'); i.focus(); }; });
+}
+function isRead(a) { return /^(get|bootstrap|ping|login|refresh)/.test(a); }
 function fetchOnce(action, payload) {
   if (IS_DEMO) return new Promise(function (res) { setTimeout(function () { res(JSON.parse(JSON.stringify(DEMO_BACKEND.rpc(action, S.token, JSON.parse(JSON.stringify(payload || {})))))); }, 120 + Math.random() * 260); });
-  return fetch(API_URL, { method: 'POST', redirect: 'follow', credentials: 'omit', cache: 'no-store', body: JSON.stringify({ action: action, token: S.token, payload: payload || {} }) })
-    .then(function (r) { return r.text(); })
+  var ctl = window.AbortController ? new AbortController() : null, tm = ctl ? setTimeout(function () { ctl.abort(); }, 90000) : null;
+  return fetch(API_URL, { method: 'POST', redirect: 'follow', credentials: 'omit', cache: 'no-store', body: JSON.stringify({ action: action, token: S.token, payload: payload || {} }), signal: ctl ? ctl.signal : undefined })
+    .then(function (r) { clearTimeout(tm); return r.text(); }, function (e) { clearTimeout(tm); if (e && e.name === 'AbortError') { var er = new Error('เซิร์ฟเวอร์ตอบช้าเกิน 90 วินาที กรุณาลองใหม่'); er.noRetry = true; throw er; } throw e; })
     .then(function (t) { if (String(t).trim().charAt(0) === '<') { var e = new Error('เซิร์ฟเวอร์ Google ไม่ว่างชั่วคราว'); e.retry = true; throw e; } return JSON.parse(t); });
 }
 function rawCall(action, payload) {
   var waits = [700, 1600, 3200], tries = 0, canRetry = isRead(action) || (payload && payload._rid);
-  netBar(1);
+  netBar(1, action);
   var attempt = function () {
     return netSlot().then(function () { return fetchOnce(action, payload); })
       .then(function (x) { netDone(); return x; }, function (e) {
         netDone();
-        if (canRetry && tries < waits.length) { var w = waits[tries++]; return new Promise(function (r) { setTimeout(r, w); }).then(attempt); }
+        if (canRetry && !e.noRetry && tries < waits.length) { var w = waits[tries++]; return new Promise(function (r) { setTimeout(r, w); }).then(attempt); }
         throw new Error(e && e.message && !/Failed to fetch|NetworkError|Load failed/.test(e.message) ? e.message : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองใหม่');
       });
   };
-  return attempt().then(function (x) { netBar(-1); return x; }, function (e) { netBar(-1); throw e; });
+  return attempt().then(function (x) { netBar(-1, action); return x; }, function (e) { netBar(-1, action); throw e; });
 }
 var MEMO = {}, MEMO_T = {};
 function mkey(a, p) { return a + '|' + JSON.stringify(p || {}); }
@@ -212,37 +246,40 @@ function renderLogin(msg) {
     (msg ? '<div class="banner warn">' + esc(msg) + '</div>' : '') +
     (IS_DEMO ? '<div class="demo"><b>บัญชีทดลอง</b> รหัสผ่าน <b>demo1234</b> ทุกบัญชี<div class="row"><button type="button" class="btn btn-sm" data-u="nurse.smc">พยาบาล</button><button type="button" class="btn btn-sm" data-u="exec">ผู้บริหาร</button><button type="button" class="btn btn-sm" data-u="admin">แอดมิน</button></div></div>' : '') +
     '<label class="field" for="lu">ชื่อผู้ใช้<input id="lu" name="username" type="text" autocomplete="username" autocapitalize="none" required></label>' +
-    '<label class="field" for="lp">รหัสผ่าน<input id="lp" name="password" type="password" autocomplete="current-password" required></label>' +
+    pwField('lp', 'รหัสผ่าน', 'current-password', 'name="password"') +
     '<label class="row small" for="lr"><input id="lr" type="checkbox" checked> จำการเข้าสู่ระบบ 30 วัน (เครื่องเคาน์เตอร์)</label>' +
     '<button class="btn btn-brand btn-lg" id="lb" type="submit" style="justify-content:center">เข้าสู่ระบบ</button>' +
+    '<p class="small" id="lhint" hidden style="margin:0;color:var(--warn)">เซิร์ฟเวอร์ Google กำลังเริ่มทำงาน ครั้งแรกของวันอาจใช้ 5–15 วินาที ครั้งต่อไปจะเร็วขึ้น</p>' +
     '<p class="xs muted" style="margin:0">ลืมรหัสผ่าน ติดต่อแอดมินของระบบ · ' + esc(typeof APP_ORG !== 'undefined' ? APP_ORG : '') + '</p></form></section></div>';
   $$('[data-u]').forEach(function (b) { b.onclick = function () { $('#lu').value = b.getAttribute('data-u'); $('#lp').value = 'demo1234'; $('#lb').click(); }; });
   $('#lf').onsubmit = function (e) {
     e.preventDefault();
-    var btn = $('#lb'); btn.disabled = true; btn.innerHTML = IC.spin + ' กำลังเข้าสู่ระบบ…';
+    var btn = $('#lb'), t0 = Date.now(); btn.disabled = true; btn.innerHTML = IC.spin + ' กำลังเข้าสู่ระบบ…';
+    var tick = setInterval(function () { var s = Math.round((Date.now() - t0) / 1000); btn.innerHTML = IC.spin + ' กำลังเข้าสู่ระบบ… ' + s + ' วิ'; var h = $('#lhint'); if (h && s >= 6) h.hidden = false; }, 1000);
     var today = ds(new Date()), first = { action: 'getDay', payload: { date: today } };
     api('login', { username: $('#lu').value, password: $('#lp').value, remember: $('#lr').checked, withBoot: true, first: first }).then(function (r) {
       S.token = r.token; if (!IS_DEMO) store('token', r.token); applyBoot(r.boot);
       if (r.first) { var k = mkey('getDay', r.first.payload); MEMO[k] = r.first.data; MEMO_T[k] = Date.now(); }
-      S.date = today; startApp();
+      clearInterval(tick); S.date = today; startApp();
       if (r.mustChange) changePassword(true);
-    }).catch(function (err) { btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; toast(err.message, true); });
+    }).catch(function (err) { clearInterval(tick); btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; var h = $('#lhint'); if (h) h.hidden = true; toast(err.message, true); });
   };
+  bindEyes($('#lf'));
+  if (!IS_DEMO) { try { rawCall('ping', {}).catch(function () { }); } catch (e) { } }   // ปลุกเซิร์ฟเวอร์ระหว่างพิมพ์รหัสผ่าน
   setTimeout(function () { var u = $('#lu'); if (u) u.focus(); }, 50);
 }
 function applyBoot(b) { S.boot = b; S.me = b.me; store('boot', b); }
 function changePassword(forced) {
   var m = modal(forced ? 'ตั้งรหัสผ่านใหม่ก่อนใช้งาน' : 'เปลี่ยนรหัสผ่าน', '<form id="cpf" style="display:flex;flex-direction:column;gap:12px">' +
     (forced ? '<p class="small muted" style="margin:0">รหัสผ่านที่ได้รับเป็นรหัสชั่วคราว กรุณาตั้งรหัสใหม่อย่างน้อย 8 ตัว</p>' : '') +
-    '<label class="field" for="cp0">รหัสผ่านเดิม<input id="cp0" type="password" autocomplete="current-password" required></label>' +
-    '<label class="field" for="cp1">รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)<input id="cp1" type="password" autocomplete="new-password" minlength="8" required></label>' +
-    '<label class="field" for="cp2">ยืนยันรหัสผ่านใหม่<input id="cp2" type="password" autocomplete="new-password" minlength="8" required></label>' +
-    '<button class="btn btn-brand" type="submit" style="align-self:flex-end">บันทึกรหัสผ่าน</button></form>', '', 'sm');
+    pwField('cp0', 'รหัสผ่านเดิม (หรือรหัสชั่วคราว)', 'current-password') + pwField('cp1', 'รหัสผ่านใหม่ (อย่างน้อย 8 ตัว)', 'new-password', 'minlength="8"') + pwField('cp2', 'ยืนยันรหัสผ่านใหม่', 'new-password', 'minlength="8"') +
+    '<button class="btn btn-brand" id="cpb" type="submit" style="align-self:flex-end">บันทึกรหัสผ่าน</button></form>', '', 'sm');
+  bindEyes(m);
   if (forced) { var x = $('[data-close]', m); if (x) x.remove(); }
   $('#cpf', m).onsubmit = function (e) {
     e.preventDefault();
     if ($('#cp1', m).value !== $('#cp2', m).value) return toast('รหัสผ่านใหม่ 2 ช่องไม่ตรงกัน', true);
-    api('changePassword', { oldPassword: $('#cp0', m).value, newPassword: $('#cp1', m).value, remember: true, _rid: rid() }).then(function (r) {
+    busy($('#cpb', m), api('changePassword', { oldPassword: $('#cp0', m).value, newPassword: $('#cp1', m).value, remember: true, _rid: rid() }), 'กำลังบันทึก…').then(function (r) {
       S.token = r.token; if (!IS_DEMO) store('token', r.token); S.me.mustChange = false; m.remove(); toast('เปลี่ยนรหัสผ่านแล้ว');
     }).catch(function (err) { toast(err.message, true); });
   };
