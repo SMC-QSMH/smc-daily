@@ -70,129 +70,185 @@ function deltaHtml(cur, prev, mode, okPrev, partial) {
 function itemName(id) { var i = (S.boot.items || []).filter(function (x) { return x.id === id; })[0]; return i ? i.name : id; }
 
 /* =====================================================================
-   รายงาน
+   รายงาน (กรองได้: ประเภทวัน · กลุ่มคลินิก · คลินิก · แพทย์ · ดูตาม)
    ===================================================================== */
-var REP = { mode: 'month', key: null, data: null };
+var REP = { mode: 'month', key: null, req: null, cur: null, prev: null, cases: null, casesKey: '' };
+function procNote() { return filtActive() ? '<span class="chip idle" title="หัตถการและยอดอื่น ๆ คีย์เป็นยอดรวมทั้งวัน จึงไม่แยกตามคลินิก/แพทย์">ยอดรวมทั้งคลินิกพิเศษ ไม่แยกตามตัวกรอง</span>' : ''; }
+function statCards(c, p, mode, partial, okPrev) {
+  var wdAvg = c.wd.n ? c.wd.vn / c.wd.n : 0, pwd = p && p.wd.n ? p.wd.vn / p.wd.n : null;
+  var spark = c.daily.slice(-30).map(function (x) { return x[1]; });
+  return '<div class="stats">' +
+    '<div class="stat rise d1"><span class="lb">' + IC.users + 'ผู้ป่วยทั้งหมด</span><span class="v"><span data-count="' + c.total + '">0</span><small>ราย</small></span>' + deltaHtml(c.total, p && p.total, mode, okPrev, partial) + miniLine(spark) + '</div>' +
+    '<div class="stat rise d2"><span class="lb">' + IC.clinic + 'วันที่มีผู้ป่วย</span><span class="v"><span data-count="' + c.openDays + '">0</span><small>วัน</small></span><span class="d muted">วันทำการ ' + c.wd.n + ' · วันหยุด ' + c.off.n + '</span></div>' +
+    '<div class="stat rise d3"><span class="lb">' + IC.pulse + 'เฉลี่ยต่อวันทำการ</span><span class="v"><span data-count="' + wdAvg + '" data-dec="1">0</span><small>ราย/วัน</small></span>' + deltaHtml(wdAvg, pwd, mode, okPrev, partial) + '</div>' +
+    '<div class="stat rise d4"><span class="lb">' + IC.syringe + 'หัตถการรวม</span><span class="v"><span data-count="' + c.procTotal + '">0</span><small>ครั้ง</small></span><span class="d ' + (c.missing ? 'down' : 'muted') + '">' + (c.missing ? 'ยังไม่คีย์ ' + c.missing + ' วัน' : (filtActive() ? 'ยอดรวมทั้งคลินิกพิเศษ' : 'คีย์ครบทุกวันที่เปิด')) + '</span></div></div>';
+}
+function trendData(c) {
+  var long = c.daily.length > 62;
+  if (!long) return { long: false, bars: c.daily.map(function (x) { var d = pd(x[0]); return { label: String(d.getDate()), v: x[1] || 0, color: typeColor(x[2]), tip: '<b>' + esc(thDate(x[0], true)) + '</b><br>' + (x[1] == null ? 'ไม่มีข้อมูล' : fmt(x[1], 0) + ' ราย') + ' · ' + typeName(x[2]) }; }) };
+  var mm = {}, ord = []; c.daily.forEach(function (x) { var k = x[0].slice(0, 7); if (!(k in mm)) { mm[k] = 0; ord.push(k); } mm[k] += x[1] || 0; });
+  return { long: true, bars: ord.map(function (k) { return { label: TH_M[+k.slice(5) - 1], v: mm[k], color: 'var(--c1)', tip: '<b>' + esc(thMonth(k)) + '</b><br>' + fmt(mm[k], 0) + ' ราย' }; }) };
+}
+function trendCard(c, id, cls) {
+  var t = trendData(c);
+  return '<section class="card ' + (cls || '') + ' rise d2"><div class="card-h"><h3><span class="ic">' + IC.dash + '</span>' + (t.long ? 'ผู้ป่วยรายเดือน' : 'ผู้ป่วยรายวัน') + '</h3><div class="row">' +
+    (t.long ? '' : '<div class="legend"><span><i style="background:var(--d-w)"></i>วันทำการ</span><span><i style="background:var(--d-s)"></i>เสาร์–อาทิตย์</span><span><i style="background:var(--d-h)"></i>นักขัตฤกษ์</span></div>') + labelsToggle(id) + '</div></div>' +
+    '<div class="card-b">' + barChart(t.bars, { h: 250, labels: labelsOn(), aria: 'แนวโน้มผู้ป่วย', maxLabels: t.long ? 24 : 31 }) + '</div></section>';
+}
+function breakdownCard(c, by) {
+  var rows = anRows(c, by), tot = c.total || 1, mx = rows.length ? rows[0].v : 1;
+  return '<section class="card rise d2"><div class="card-h"><h3><span class="ic">' + (by === 'doc' ? IC.users : by === 'group' ? IC.tag : IC.clinic) + '</span>ผู้ป่วยตาม' + BY_TH[by] + '</h3><span class="small muted">' + rows.length + ' ' + (by === 'doc' ? 'ท่าน' : by === 'group' ? 'กลุ่ม' : 'คลินิก') + ' · กดแถวเพื่อกรอง</span></div>' +
+    '<div class="card-b"><div class="bdgrid"><div>' + donut(anDonut(rows, by), { aria: 'สัดส่วนผู้ป่วยตาม' + BY_TH[by] }) + '</div>' +
+    '<div class="tbl-wrap bdtbl"><table class="tbl"><thead><tr><th>' + BY_TH[by] + '</th><th class="num">วัน</th><th class="num">ผู้ป่วย</th><th class="num">เฉลี่ย/วัน</th><th style="width:24%">สัดส่วน</th></tr></thead><tbody>' +
+    (rows.map(function (x) { var sh = x.v / tot * 100; return '<tr class="pickable" data-pick="' + esc(x.pick) + '"><td><span class="dot" style="background:' + x.color + '"></span>' + x.name + (x.sub ? '<div class="xs muted">' + esc(x.sub) + '</div>' : '') + '</td><td class="num">' + x.days + '</td><td class="num"><b>' + fmt(x.v, 0) + '</b></td><td class="num">' + fmt(x.v / (x.days || 1)) + '</td><td><div class="sbar"><i style="width:' + Math.max(1.5, x.v / mx * 100).toFixed(1) + '%;background:' + x.color + '"></i></div><span class="xs muted">' + fmt(sh) + '%</span></td></tr>'; }).join('') || '<tr><td colspan="5" class="muted">ไม่มีข้อมูลตามตัวกรอง</td></tr>') +
+    '</tbody><tfoot><tr><td>รวม</td><td class="num">' + c.openDays + '</td><td class="num">' + fmt(c.total, 0) + '</td><td class="num">' + (c.openDays ? fmt(c.total / c.openDays) : '–') + '</td><td>100%</td></tr></tfoot></table></div></div></div></section>';
+}
+function procCard(c) {
+  var items = Object.keys(c.procs || {}).map(function (k) { return [k, c.procs[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
+  return '<section class="card rise d3"><div class="card-h"><h3><span class="ic">' + IC.syringe + '</span>หัตถการ</h3>' + (procNote() || '<span class="small muted">ต่อผู้ป่วย 100 ราย</span>') + '</div><div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>รายการ</th><th class="num">ครั้ง</th><th class="num">/100 ราย</th></tr></thead><tbody>' +
+    (items.map(function (x) { return '<tr><td>' + esc(itemName(x[0])) + '</td><td class="num"><b>' + fmt(x[1], 0) + '</b></td><td class="num">' + (c.total && !filtActive() ? fmt(x[1] / c.total * 100) : '–') + '</td></tr>'; }).join('') || '<tr><td colspan="3" class="muted">ยังไม่มีการคีย์</td></tr>') +
+    '</tbody><tfoot><tr><td>รวม</td><td class="num">' + fmt(c.procTotal, 0) + '</td><td class="num">' + (c.total && !filtActive() ? fmt(c.procTotal / c.total * 100) : '–') + '</td></tr></tfoot></table></div></section>' +
+    '<section class="card rise d4"><div class="card-h"><h3><span class="ic">' + IC.ambul + '</span>ยอดอื่น ๆ</h3>' + procNote() + '</div><div class="card-b"><dl class="kvlist"><dt>Consult แผนกอื่น</dt><dd><b>' + fmt(c.other.consult, 0) + '</b> ราย</dd><dt>โอนตรวจต่อ Night OPD ชั้น 4</dt><dd><b>' + fmt(c.other.nightOpd, 0) + '</b> ราย</dd><dt>Admit</dt><dd><b>' + fmt(c.other.admit, 0) + '</b> ราย</dd></dl></div></section>';
+}
 function pageRep() {
   if (!REP.key) REP.key = defaultKey(REP.mode);
-  var req = rangeReq(REP);
+  var req = REP.req = rangeReq(REP);
   $('#main').innerHTML = banners() + '<div class="pagehead rise"><div><div class="eyebrow">รายงาน</div><h1>' + esc(periodLabel(REP.mode, REP.key)) + '</h1><div class="small muted">' + esc(thDate(req.from)) + ' – ' + esc(thDate(req.to)) + '</div></div>' +
-    '<div class="row"><button class="btn" id="rxls">' + IC.xls + 'ส่งออก Excel</button><button class="btn" id="rprint">' + IC.print + 'พิมพ์</button><button class="btn" id="rline">' + IC.line + 'สรุปส่งไลน์</button></div></div>' +
+    '<div class="row">' + helpBtn() + '<button class="btn" id="rxls">' + IC.xls + 'ส่งออก Excel</button><button class="btn" id="rprint">' + IC.print + 'พิมพ์</button><button class="btn" id="rline">' + IC.line + 'สรุปส่งไลน์</button></div></div>' +
     periodPicker(REP, 'rp') + '<div id="repBody"><div class="stats">' + [1, 2, 3, 4].map(function () { return '<div class="stat skel" style="height:96px"></div>'; }).join('') + '</div></div>';
-  bindPicker(REP, 'rp', pageRep);
+  bindPicker(REP, 'rp', pageRep); bindHelp($('#main'));
   var key = REP.mode + REP.key;
-  api('getReport', req, { onCache: function (d) { REP.data = d; drawRep(req); } }).then(function (d) { if (S.page === 'rep' && REP.mode + REP.key === key) { REP.data = d; drawRep(req); } }).catch(function (e) { toast(e.message, true); });
-  $('#rxls').onclick = function () { exportRep(req); };
-  $('#rprint').onclick = function () { printRep(req); };
-  $('#rline').onclick = function () { if (!REP.data) return; var m = modal('สรุปส่งไลน์', '<pre class="linetxt" id="rtx">' + esc(repText(req)) + '</pre>', '<button class="btn btn-brand" id="rcp">' + IC.copy + 'คัดลอกข้อความ</button>'); $('#rcp', m).onclick = function () { copyText(repText(req), $('#rtx', m)); }; };
+  anLoad(req.prevFrom < req.from ? req.prevFrom : req.from, req.to).then(function () { if (S.page === 'rep' && REP.mode + REP.key === key) drawRep(); }).catch(function (e) { toast(e.message, true); });
+  $('#rxls').onclick = function () { exportRep(); };
+  $('#rprint').onclick = function () { printRep(); };
+  $('#rline').onclick = function () { if (!REP.cur) return; var m = modal('สรุปส่งไลน์', '<pre class="linetxt" id="rtx">' + esc(repText()) + '</pre>', '<button class="btn btn-brand" id="rcp">' + IC.copy + 'คัดลอกข้อความ</button>', 'sheet'); $('#rcp', m).onclick = function () { copyText(repText(), $('#rtx', m)); }; };
 }
-function drawRep(req) {
-  var box = $('#repBody'); if (!box || !REP.data) return;
-  var c = REP.data.cur, p = REP.data.prev, okPrev = p && p.openDays > 0 && !p.nodataDays;
-  var wdAvg = c.wd.n ? c.wd.vn / c.wd.n : null, offAvg = c.off.n ? c.off.vn / c.off.n : null;
-  var items = Object.keys(c.procs || {}).map(function (k) { return [k, c.procs[k]]; }).sort(function (a, b) { return b[1] - a[1]; });
-  box.innerHTML = (c.nodataDays ? '<div class="banner warn" style="margin-bottom:12px">' + IC.warn.replace('<svg', '<svg width="16" height="16"') + ' ยังไม่มียอดจาก API ' + c.nodataDays + ' วันในช่วงนี้ (ระบบกำลังดึงย้อนหลังหรือ API ไม่ตอบ)</div>' : '') +
-    '<div class="stats">' +
-    '<div class="stat rise d1"><span class="lb">' + IC.users + 'ผู้ป่วยทั้งหมด</span><span class="v"><span data-count="' + c.total + '">0</span><small>ราย</small></span>' + deltaHtml(c.total, p && p.total, REP.mode, okPrev, req.partial) + '</div>' +
-    '<div class="stat rise d2"><span class="lb">' + IC.clinic + 'วันที่เปิดคลินิก</span><span class="v"><span data-count="' + c.openDays + '">0</span><small>วัน</small></span><span class="d muted">วันทำการ ' + c.wd.n + ' · วันหยุด ' + c.off.n + '</span></div>' +
-    '<div class="stat rise d3"><span class="lb">' + IC.pulse + 'เฉลี่ยต่อวันทำการ</span><span class="v"><span data-count="' + (wdAvg || 0) + '" data-dec="1">0</span><small>ราย</small></span><span class="d muted">วันหยุดเฉลี่ย ' + fmt(offAvg) + ' ราย</span></div>' +
-    '<div class="stat rise d4"><span class="lb">' + IC.syringe + 'หัตถการรวม</span><span class="v"><span data-count="' + c.procTotal + '">0</span><small>ครั้ง</small></span><span class="d ' + (c.missingDays ? 'down' : 'muted') + '">' + (c.missingDays ? 'ยังไม่คีย์ ' + c.missingDays + ' วัน' : 'คีย์ครบทุกวันที่เปิด') + '</span></div></div>' +
-    '<div class="grid-2" style="margin-top:18px"><section class="card rise d2"><div class="card-h"><h3><span class="ic">' + IC.clinic + '</span>ผู้ป่วยแยกคลินิก</h3><span class="small muted">' + (c.clinics || []).length + ' คลินิก</span></div><div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>คลินิก</th><th class="num">วันที่เปิด</th><th class="num">ผู้ป่วย</th><th class="num">เฉลี่ย/วัน</th><th style="width:22%">สัดส่วน</th></tr></thead><tbody>' +
-      (c.clinics || []).map(function (x) { var sh = c.total ? x[1] / c.total * 100 : 0; return '<tr><td><span class="code">' + esc(x[0]) + '</span> <span class="small">' + esc(clinicShort(x[0])) + '</span></td><td class="num">' + x[2] + '</td><td class="num"><b>' + fmt(x[1], 0) + '</b></td><td class="num">' + fmt(x[1] / x[2]) + '</td><td><div class="ptrow"><div class="bar" title="' + fmt(sh) + '%"><i style="width:' + Math.max(2, sh / ((c.clinics[0][1] / c.total * 100) || 1) * 100).toFixed(1) + '%"></i></div></div><span class="xs muted">' + fmt(sh) + '%</span></td></tr>'; }).join('') +
-      '</tbody><tfoot><tr><td>รวม</td><td class="num">' + c.openDays + '</td><td class="num">' + fmt(c.total, 0) + '</td><td class="num">' + (c.openDays ? fmt(c.total / c.openDays) : '–') + '</td><td>100%</td></tr></tfoot></table></div></section>' +
-    '<div class="col"><section class="card rise d3"><div class="card-h"><h3><span class="ic">' + IC.syringe + '</span>หัตถการ</h3><span class="small muted">ต่อผู้ป่วย 100 ราย</span></div><div class="card-b tbl-wrap"><table class="tbl"><thead><tr><th>รายการ</th><th class="num">ครั้ง</th><th class="num">/100 ราย</th></tr></thead><tbody>' +
-      (items.map(function (x) { return '<tr><td>' + esc(itemName(x[0])) + '</td><td class="num"><b>' + fmt(x[1], 0) + '</b></td><td class="num">' + (c.total ? fmt(x[1] / c.total * 100) : '–') + '</td></tr>'; }).join('') || '<tr><td colspan="3" class="muted">ยังไม่มีการคีย์</td></tr>') +
-      '</tbody><tfoot><tr><td>รวม</td><td class="num">' + fmt(c.procTotal, 0) + '</td><td class="num">' + (c.total ? fmt(c.procTotal / c.total * 100) : '–') + '</td></tr></tfoot></table></div></section>' +
-    '<section class="card rise d4"><div class="card-h"><h3><span class="ic">' + IC.pulse + '</span>ยอดอื่น ๆ</h3></div><div class="card-b"><dl class="kvlist"><dt>Consult แผนกอื่น</dt><dd class="num" style="text-align:left"><b>' + fmt(c.other.consult, 0) + '</b> ราย</dd><dt>โอนตรวจต่อ Night OPD ชั้น 4</dt><dd><b>' + fmt(c.other.nightOpd, 0) + '</b> ราย</dd><dt>Admit</dt><dd><b>' + fmt(c.other.admit, 0) + '</b> ราย</dd></dl></div></section></div></div>' +
-    '<section class="card rise d4" style="margin-top:18px"><div class="card-h"><h3><span class="ic">' + IC.users + '</span>ผู้ป่วยแยกแพทย์</h3><input type="search" id="dq" placeholder="ค้นหาชื่อแพทย์" aria-label="ค้นหาชื่อแพทย์"></div><div class="card-b tbl-wrap" style="max-height:460px;overflow:auto"><table class="tbl"><thead><tr><th>#</th><th>แพทย์</th><th class="num">ผู้ป่วย</th><th class="num">สัดส่วน</th></tr></thead><tbody id="dbody">' +
-      (c.doctors || []).map(function (x, i) { return '<tr data-dn="' + esc(x[0]) + '"><td class="muted tnum xs">' + (i + 1) + '</td><td>' + esc(x[0]) + '</td><td class="num">' + fmt(x[1], 0) + '</td><td class="num">' + (c.total ? fmt(x[1] / c.total * 100) : '–') + '%</td></tr>'; }).join('') + '</tbody></table></div></section>' +
-    (c.daily && c.daily.length > 1 ? '<section class="card rise d5" style="margin-top:18px"><div class="card-h"><h3><span class="ic">' + IC.cal + '</span>รายวัน</h3></div><div class="card-b tbl-wrap" style="max-height:420px;overflow:auto"><table class="tbl"><thead><tr><th>วันที่</th><th>ประเภทวัน</th><th class="num">ผู้ป่วย</th></tr></thead><tbody>' +
-      c.daily.slice().reverse().map(function (x) { return '<tr><td><a href="#" data-go-day="' + x[0] + '">' + esc(thDate(x[0], true)) + '</a></td><td class="small" style="color:' + typeColor(x[2]) + '">' + typeName(x[2]) + '</td><td class="num">' + (x[1] == null ? '<span class="muted">รอข้อมูล</span>' : fmt(x[1], 0)) + '</td></tr>'; }).join('') + '</tbody></table></div></section>' : '');
-  countUp(box);
-  $('#dq').oninput = function (e) { var q = e.target.value.trim(); $$('#dbody tr').forEach(function (tr) { tr.hidden = !!q && tr.getAttribute('data-dn').indexOf(q) < 0; }); };
+function drawRep() {
+  var box = $('#repBody'), req = REP.req; if (!box) return;
+  var f = filt(), c = REP.cur = anAgg(req.from, req.to, f), p = REP.prev = anAgg(req.prevFrom, req.prevTo, f), okPrev = p.openDays > 0 && !p.nodata;
+  var sy = scrollY;
+  box.innerHTML = filterBar(req.from, req.to, drawRep) + (filtDesc() ? '<div class="fdesc">' + IC.filter + '<span>' + esc(filtDesc()) + '</span></div>' : '') +
+    (c.nodata ? '<div class="banner warn">' + IC.warn.replace('<svg', '<svg width="16" height="16"') + ' ยังไม่มียอดจากระบบโรงพยาบาล ' + c.nodata + ' วันในช่วงนี้</div>' : '') +
+    statCards(c, p, REP.mode, req.partial, okPrev) +
+    (c.daily.length > 1 ? '<div style="margin-top:18px">' + trendCard(c, 'lblR') + '</div>' : '') +
+    '<div class="grid-rep" style="margin-top:18px">' + breakdownCard(c, f.by) + '<div class="col">' + procCard(c) + '</div></div>' +
+    (f.by !== 'doc' ? docTableCard(c) : '') +
+    (c.daily.length > 1 ? '<details class="card rise d5" style="margin-top:18px"><summary class="card-h"><h3><span class="ic">' + IC.cal + '</span>รายวัน (' + c.daily.length + ' วัน)</h3><span class="small muted">กดเพื่อเปิด/ปิด</span></summary><div class="card-b tbl-wrap" style="max-height:420px;overflow:auto"><table class="tbl"><thead><tr><th>วันที่</th><th>ประเภทวัน</th><th class="num">ผู้ป่วย</th></tr></thead><tbody>' +
+      c.daily.slice().reverse().map(function (x) { return '<tr><td><a href="#" data-go-day="' + x[0] + '">' + esc(thDate(x[0], true)) + '</a></td><td class="small"><span class="dot" style="background:' + typeColor(x[2]) + '"></span>' + typeName(x[2]) + '</td><td class="num">' + (x[1] == null ? '<span class="muted">ไม่มีข้อมูล</span>' : fmt(x[1], 0)) + '</td></tr>'; }).join('') + '</tbody></table></div></details>' : '') +
+    '<section class="card rise d5" id="repCases" style="margin-top:18px"></section>';
+  bindFilterBar(); bindPicks(box); countUp(box); bindTips(box);
+  var lb = $('#lblR'); if (lb) lb.onchange = function () { store('chartLabels', lb.checked); drawRep(); };
+  var dq = $('#dq'); if (dq) dq.oninput = function () { var q = dq.value.trim().toLowerCase(); $$('#dbody tr').forEach(function (tr) { tr.hidden = !!q && tr.getAttribute('data-dn').toLowerCase().indexOf(q) < 0; }); };
   $$('[data-go-day]', box).forEach(function (a) { a.onclick = function (e) { e.preventDefault(); S.date = a.getAttribute('data-go-day'); go('today'); }; });
+  if (sy) window.scrollTo(0, sy);
+  loadRepCases();
 }
-function repText(req) {
-  var c = REP.data.cur, its = Object.keys(c.procs || {}).sort(function (a, b) { return c.procs[b] - c.procs[a]; });
-  return '📊 สรุปรายงาน คลินิกพิเศษเฉพาะทางนอกเวลา\n' + periodLabel(REP.mode, REP.key) + ' (' + thDate(req.from) + ' – ' + thDate(req.to) + ')\n\n' +
-    '👥 ผู้ป่วยทั้งหมด ' + fmt(c.total, 0) + ' ราย · เปิด ' + c.openDays + ' วัน · เฉลี่ยวันทำการ ' + fmt(c.wd.n ? c.wd.vn / c.wd.n : 0) + ' ราย/วัน\n' +
-    'คลินิกสูงสุด: ' + (c.clinics || []).slice(0, 5).map(function (x) { return x[0] + ' ' + fmt(x[1], 0); }).join(' · ') + '\n\n' +
-    '💉 หัตถการ ' + fmt(c.procTotal, 0) + ' ครั้ง: ' + its.slice(0, 8).map(function (k) { return itemName(k) + ' ' + fmt(c.procs[k], 0); }).join(' · ') + '\n' +
+function docTableCard(c) {
+  var rows = anRows(c, 'doc');
+  return '<section class="card rise d4" style="margin-top:18px"><div class="card-h"><h3><span class="ic">' + IC.users + '</span>ผู้ป่วยแยกแพทย์</h3><input type="search" id="dq" placeholder="ค้นหาชื่อแพทย์" aria-label="ค้นหาชื่อแพทย์"></div><div class="card-b tbl-wrap" style="max-height:460px;overflow:auto"><table class="tbl"><thead><tr><th>#</th><th>แพทย์</th><th>คลินิก</th><th class="num">วัน</th><th class="num">ผู้ป่วย</th><th class="num">สัดส่วน</th></tr></thead><tbody id="dbody">' +
+    rows.map(function (x, i) { return '<tr class="pickable" data-pick="' + esc(x.pick) + '" data-dn="' + esc(x.title) + '"><td class="muted tnum xs">' + (i + 1) + '</td><td>' + x.name + '</td><td class="small muted">' + esc(x.sub) + '</td><td class="num">' + x.days + '</td><td class="num">' + fmt(x.v, 0) + '</td><td class="num">' + (c.total ? fmt(x.v / c.total * 100) : '–') + '%</td></tr>'; }).join('') + '</tbody></table></div></section>';
+}
+/* ผู้ป่วยส่งต่อในช่วงรายงาน (ไม่แยกตามคลินิก) */
+function loadRepCases() {
+  var box = $('#repCases'), req = REP.req; if (!box) return;
+  var k = req.from + '|' + req.to;
+  var draw = function () {
+    var rows = REP.cases || [], show = store('repCaseShow') === true;
+    var cnt = { admit: 0, consult: 0, nightOpd: 0 }; rows.forEach(function (x) { cnt[x.type]++; });
+    box.innerHTML = '<div class="card-h"><h3><span class="ic">' + IC.ambul + '</span>ผู้ป่วยส่งต่อ <span class="chip brand">' + rows.length + ' ราย</span></h3><div class="row"><span class="small muted">Admit ' + cnt.admit + ' · Consult ' + cnt.consult + ' · Night OPD ' + cnt.nightOpd + '</span>' +
+      (rows.length ? '<button class="btn btn-sm btn-ghost" id="rcEye">' + (show ? IC.eyeOff + 'ซ่อนชื่อ/HN' : IC.eye + 'แสดงชื่อ/HN') + '</button>' : '') + '</div></div>' +
+      '<div class="card-b tbl-wrap" style="max-height:440px;overflow:auto">' + (rows.length ? '<table class="tbl"><thead><tr><th>วันที่</th><th>ประเภท</th><th>ชื่อ-สกุล</th><th>HN</th><th>อายุ</th><th>DX</th><th>Ward/หน่วยงาน</th><th>หมายเหตุ</th></tr></thead><tbody>' +
+        rows.map(function (x) { return '<tr><td class="small"><a href="#" data-go-day="' + x.date + '">' + esc(thDate(x.date)) + '</a></td><td><span class="ctype sm t-' + x.type + '">' + esc(CASE_SHORT[x.type]) + '</span></td><td>' + esc(show ? x.name : maskName(x.name)) + '</td><td class="tnum">' + esc(show ? x.hn : maskHn(x.hn)) + '</td><td>' + esc(x.age) + '</td><td>' + esc(x.dx) + '</td><td>' + esc(x.dest) + '</td><td class="small">' + esc(x.note) + '</td></tr>'; }).join('') + '</tbody></table>'
+        : '<div class="empty" style="padding:16px">' + IC.ambul + 'ไม่มีผู้ป่วยส่งต่อในช่วงนี้</div>') + '</div>';
+    var e = $('#rcEye', box); if (e) e.onclick = function () { store('repCaseShow', !show); draw(); };
+    $$('[data-go-day]', box).forEach(function (a) { a.onclick = function (ev) { ev.preventDefault(); S.date = a.getAttribute('data-go-day'); go('today'); }; });
+  };
+  if (REP.casesKey === k && REP.cases) return draw();
+  box.innerHTML = '<div class="card-b"><div class="skel" style="height:60px;margin-top:16px"></div></div>';
+  api('getCases', { from: req.from, to: req.to }).then(function (r) { REP.cases = r.rows; REP.casesKey = k; if ($('#repCases')) draw(); }).catch(function (e) { box.innerHTML = '<div class="card-b small muted" style="padding-top:16px">' + esc(e.message) + '</div>'; });
+}
+function repText() {
+  var c = REP.cur, req = REP.req, f = filt(), its = Object.keys(c.procs || {}).sort(function (a, b) { return c.procs[b] - c.procs[a]; }), rows = anRows(c, f.by);
+  return '📊 สรุปรายงาน ' + ORG.clinic + '\n' + periodLabel(REP.mode, REP.key) + ' (' + thDate(req.from) + ' – ' + thDate(req.to) + ')' + (filtDesc() ? '\nตัวกรอง: ' + filtDesc() : '') + '\n\n' +
+    '👥 ผู้ป่วยทั้งหมด ' + fmt(c.total, 0) + ' ราย · มีผู้ป่วย ' + c.openDays + ' วัน · เฉลี่ยวันทำการ ' + fmt(c.wd.n ? c.wd.vn / c.wd.n : 0) + ' ราย/วัน\n' +
+    BY_TH[f.by] + 'สูงสุด: ' + rows.slice(0, 5).map(function (x) { return x.title + ' ' + fmt(x.v, 0); }).join(' · ') + '\n\n' +
+    '💉 หัตถการ ' + fmt(c.procTotal, 0) + ' ครั้ง' + (filtActive() ? ' (ยอดรวมทั้งคลินิกพิเศษ)' : '') + ': ' + its.slice(0, 8).map(function (k) { return itemName(k) + ' ' + fmt(c.procs[k], 0); }).join(' · ') + '\n' +
     'Consult ' + fmt(c.other.consult, 0) + ' · Night OPD ' + fmt(c.other.nightOpd, 0) + ' · Admit ' + fmt(c.other.admit, 0);
 }
-function exportRep(req) {
-  if (!REP.data) return;
-  loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js').then(function () {
-    var c = REP.data.cur, X = window.XLSX, wb = X.utils.book_new();
-    var sum = [['รายงานคลินิกพิเศษเฉพาะทางนอกเวลา'], [periodLabel(REP.mode, REP.key)], ['ตั้งแต่', req.from, 'ถึง', req.to], [], ['ผู้ป่วยทั้งหมด', c.total], ['วันที่เปิดคลินิก', c.openDays], ['วันทำการ', c.wd.n, 'ผู้ป่วย', c.wd.vn], ['วันหยุด', c.off.n, 'ผู้ป่วย', c.off.vn], ['หัตถการรวม', c.procTotal], ['Consult แผนกอื่น', c.other.consult], ['โอน Night OPD ชั้น 4', c.other.nightOpd], ['Admit', c.other.admit]];
-    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), 'สรุป');
-    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['รหัสคลินิก', 'คลินิก', 'วันที่เปิด', 'ผู้ป่วย', 'เฉลี่ย/วัน']].concat((c.clinics || []).map(function (x) { return [x[0], clinicShort(x[0]), x[2], x[1], Math.round(x[1] / x[2] * 10) / 10]; }))), 'คลินิก');
-    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['แพทย์', 'ผู้ป่วย']].concat(c.doctors || [])), 'แพทย์');
-    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['หัตถการ', 'ครั้ง']].concat(Object.keys(c.procs || {}).map(function (k) { return [itemName(k), c.procs[k]]; }))), 'หัตถการ');
-    X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['วันที่', 'ประเภทวัน', 'ผู้ป่วย']].concat((c.daily || []).map(function (x) { return [x[0], typeName(x[2]), x[1]]; }))), 'รายวัน');
-    X.writeFile(wb, 'SMC_Daily_' + req.from + '_' + req.to + '.xlsx');
-    toast('ส่งออก Excel แล้ว');
-  }).catch(function (e) { toast(e.message, true); });
+function exportRep() {
+  if (!REP.cur) return;
+  var m = modal('ส่งออก Excel', '<p class="small" style="margin-top:0">ส่งออกตามช่วงเวลาและตัวกรองที่เลือกอยู่' + (filtDesc() ? ' (' + esc(filtDesc()) + ')' : '') + '</p><label class="row small" for="xcase"><input type="checkbox" id="xcase"> รวมรายชื่อผู้ป่วยส่งต่อ (ชื่อ/HN)</label>',
+    '<button class="btn" data-close>ยกเลิก</button><button class="btn btn-brand" id="xgo">' + IC.xls + 'ส่งออก</button>', 'sm');
+  $('#xgo', m).onclick = function () {
+    var withCase = $('#xcase', m).checked, c = REP.cur, req = REP.req, f = filt();
+    var job = Promise.all([loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'), withCase ? api('getCases', { from: req.from, to: req.to }) : null]).then(function (res) {
+      var X = window.XLSX, wb = X.utils.book_new();
+      var sum = [[ORG.system + ' ' + ORG.clinic], [periodLabel(REP.mode, REP.key)], ['ตั้งแต่', req.from, 'ถึง', req.to], ['ตัวกรอง', filtDesc() || 'ทั้งหมด'], [], ['ผู้ป่วยทั้งหมด', c.total], ['วันที่มีผู้ป่วย', c.openDays], ['วันทำการ', c.wd.n, 'ผู้ป่วย', c.wd.vn], ['วันหยุด', c.off.n, 'ผู้ป่วย', c.off.vn], ['หัตถการรวม (ทั้งคลินิกพิเศษ)', c.procTotal], ['Consult แผนกอื่น', c.other.consult], ['โอน Night OPD ชั้น 4', c.other.nightOpd], ['Admit', c.other.admit]];
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(sum), 'สรุป');
+      if (groupsList().length) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['กลุ่มคลินิก', 'วันที่มีผู้ป่วย', 'ผู้ป่วย']].concat(anRows(c, 'group').map(function (x) { return [x.title, x.days, x.v]; }))), 'กลุ่มคลินิก');
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['รหัสคลินิก', 'คลินิก', 'กลุ่ม', 'วันที่มีผู้ป่วย', 'ผู้ป่วย', 'เฉลี่ย/วัน']].concat(anRows(c, 'clinic').map(function (x) { return [x.id, clinicShort(x.id), groupName(groupOf(x.id)), x.days, x.v, Math.round(x.v / (x.days || 1) * 10) / 10]; }))), 'คลินิก');
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['แพทย์', 'คลินิก', 'วันที่มีผู้ป่วย', 'ผู้ป่วย']].concat(anRows(c, 'doc').map(function (x) { return [x.title, x.sub, x.days, x.v]; }))), 'แพทย์');
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['หัตถการ', 'ครั้ง']].concat(Object.keys(c.procs || {}).map(function (k) { return [itemName(k), c.procs[k]]; }))), 'หัตถการ');
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['วันที่', 'ประเภทวัน', 'ผู้ป่วย']].concat(c.daily.map(function (x) { return [x[0], typeName(x[2]), x[1]]; }))), 'รายวัน');
+      if (withCase && res[1]) X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['วันที่', 'ประเภท', 'ชื่อ-สกุล', 'HN', 'อายุ', 'DX', 'Ward/หน่วยงาน', 'หมายเหตุ']].concat(res[1].rows.map(function (x) { return [x.date, CASE_T[x.type], x.name, x.hn, x.age, x.dx, x.dest, x.note]; }))), 'ผู้ป่วยส่งต่อ');
+      X.writeFile(wb, 'SMC_Daily_' + req.from + '_' + req.to + '.xlsx');
+      m.close(); toast('ส่งออก Excel แล้ว');
+    });
+    busy($('#xgo', m), job, 'กำลังสร้างไฟล์…').catch(function (e) { toast(e.message, true); });
+  };
 }
-function printRep(req) {
-  if (!REP.data) return; var c = REP.data.cur;
-  $('#printArea').innerHTML = '<div class="paper"><h4>รายงานคลินิกพิเศษเฉพาะทางนอกเวลา · ' + esc(periodLabel(REP.mode, REP.key)) + '</h4><div class="dl">' + esc(thDate(req.from, false, true)) + ' – ' + esc(thDate(req.to, false, true)) + '</div>' +
-    '<table><tbody><tr><th>ผู้ป่วยทั้งหมด</th><td class="n">' + fmt(c.total, 0) + '</td><th>วันที่เปิด</th><td class="n">' + c.openDays + '</td><th>หัตถการรวม</th><td class="n">' + fmt(c.procTotal, 0) + '</td></tr>' +
-    '<tr><th>Consult</th><td class="n">' + c.other.consult + '</td><th>Night OPD ชั้น 4</th><td class="n">' + c.other.nightOpd + '</td><th>Admit</th><td class="n">' + c.other.admit + '</td></tr></tbody></table><br>' +
-    '<table><thead><tr><th>คลินิก</th><th>ชื่อ</th><th>วันที่เปิด</th><th>ผู้ป่วย</th></tr></thead><tbody>' + (c.clinics || []).map(function (x) { return '<tr><td>' + esc(x[0]) + '</td><td>' + esc(clinicShort(x[0])) + '</td><td class="n">' + x[2] + '</td><td class="n">' + fmt(x[1], 0) + '</td></tr>'; }).join('') + '</tbody></table><br>' +
+function printRep() {
+  if (!REP.cur) return; var c = REP.cur, req = REP.req, f = filt(), rows = anRows(c, f.by);
+  printHtml('<div class="paper"><h4>รายงาน' + ORG.clinic + ' · ' + esc(periodLabel(REP.mode, REP.key)) + '</h4><div class="dl">' + esc(thDate(req.from, false, true)) + ' – ' + esc(thDate(req.to, false, true)) + (filtDesc() ? '<br><span style="font-size:11px">ตัวกรอง: ' + esc(filtDesc()) + '</span>' : '') + '</div>' +
+    '<table><tbody><tr><th>ผู้ป่วยทั้งหมด</th><td class="n">' + fmt(c.total, 0) + '</td><th>วันที่มีผู้ป่วย</th><td class="n">' + c.openDays + '</td><th>หัตถการรวม' + (filtActive() ? '*' : '') + '</th><td class="n">' + fmt(c.procTotal, 0) + '</td></tr>' +
+    '<tr><th>Consult' + (filtActive() ? '*' : '') + '</th><td class="n">' + c.other.consult + '</td><th>Night OPD ชั้น 4' + (filtActive() ? '*' : '') + '</th><td class="n">' + c.other.nightOpd + '</td><th>Admit' + (filtActive() ? '*' : '') + '</th><td class="n">' + c.other.admit + '</td></tr></tbody></table><br>' +
+    '<table><thead><tr><th>' + BY_TH[f.by] + '</th><th>วันที่มีผู้ป่วย</th><th>ผู้ป่วย</th><th>สัดส่วน</th></tr></thead><tbody>' + rows.slice(0, 40).map(function (x) { return '<tr><td>' + esc(x.title) + '</td><td class="n">' + x.days + '</td><td class="n">' + fmt(x.v, 0) + '</td><td class="n">' + fmt(x.v / (c.total || 1) * 100) + '%</td></tr>'; }).join('') + '</tbody></table><br>' +
     '<table><thead><tr><th>หัตถการ</th><th>ครั้ง</th></tr></thead><tbody>' + Object.keys(c.procs || {}).sort(function (a, b) { return c.procs[b] - c.procs[a]; }).map(function (k) { return '<tr><td>' + esc(itemName(k)) + '</td><td class="n">' + fmt(c.procs[k], 0) + '</td></tr>'; }).join('') + '</tbody></table>' +
-    '<div style="text-align:right;color:#888;font-size:10px;margin-top:6px">พิมพ์จาก SMC Daily ' + esc(stampTh(nowStamp())) + '</div></div>';
-  setTimeout(function () { window.print(); }, 60);
+    (filtActive() ? '<p style="font-size:10px;margin:4px 0 0">* ยอดรวมทั้งคลินิกพิเศษ ไม่แยกตามตัวกรอง</p>' : '') +
+    '<div class="pfoot">' + ORG.system + ' · SMC Daily · พิมพ์ ' + esc(stampTh(nowStamp())) + '</div></div>');
 }
 
 /* =====================================================================
    แดชบอร์ด
    ===================================================================== */
-var DASH = { mode: 'month', key: null };
+var DASH = { mode: 'month', key: null, req: null };
 function pageDash() {
   if (!DASH.key || DASH.mode === 'day') { DASH.mode = DASH.mode === 'day' ? 'month' : DASH.mode; DASH.key = defaultKey(DASH.mode); }
-  var req = rangeReq(DASH); req.fy = fyOf(req.to);
-  $('#main').innerHTML = banners() + '<div class="pagehead rise"><div><div class="eyebrow">แดชบอร์ด</div><h1>' + esc(periodLabel(DASH.mode, DASH.key)) + '</h1><div class="small muted">' + esc(thDate(req.from)) + ' – ' + esc(thDate(req.to)) + '</div></div></div>' +
+  var req = DASH.req = rangeReq(DASH); req.fy = fyOf(req.to);
+  $('#main').innerHTML = banners() + '<div class="pagehead rise"><div><div class="eyebrow">แดชบอร์ด</div><h1>' + esc(periodLabel(DASH.mode, DASH.key)) + '</h1><div class="small muted">' + esc(thDate(req.from)) + ' – ' + esc(thDate(req.to)) + '</div></div><div class="row">' + helpBtn() + '</div></div>' +
     periodPicker(DASH, 'dp', true) + '<div id="dashBody"><div class="stats">' + [1, 2, 3, 4].map(function () { return '<div class="stat skel" style="height:104px"></div>'; }).join('') + '</div><div class="card skel" style="height:300px;margin-top:18px"></div></div>';
-  bindPicker(DASH, 'dp', pageDash);
-  var key = DASH.mode + DASH.key;
-  api('getDashboard', req, { onCache: function (d) { drawDash(d, req); } }).then(function (d) { if (S.page === 'dash' && DASH.mode + DASH.key === key) drawDash(d, req); }).catch(function (e) { toast(e.message, true); });
+  bindPicker(DASH, 'dp', pageDash); bindHelp($('#main'));
+  var key = DASH.mode + DASH.key, y = req.fy - 543;
+  var a = (y - 2) + '-10-01'; if (req.prevFrom < a) a = req.prevFrom;
+  anLoad(a, req.to > y + '-09-30' ? req.to : y + '-09-30').then(function () { if (S.page === 'dash' && DASH.mode + DASH.key === key) drawDash(); }).catch(function (e) { toast(e.message, true); });
 }
-function drawDash(D, req) {
-  var box = $('#dashBody'); if (!box) return;
-  var c = D.cur, p = D.prev, okPrev = p && p.openDays > 0 && !p.nodataDays, fy = D.fy;
-  var wdAvg = c.wd.n ? c.wd.vn / c.wd.n : 0, pwd = p && p.wd.n ? p.wd.vn / p.wd.n : null;
-  var daily = c.daily || [], long = daily.length > 100;
-  var trend;
-  if (!long) trend = daily.map(function (x) { var d = pd(x[0]); return { label: String(d.getDate()), v: x[1] || 0, color: typeColor(x[2]), tip: '<b>' + esc(thDate(x[0], true)) + '</b><br>' + (x[1] == null ? 'รอข้อมูล' : fmt(x[1], 0) + ' ราย') + ' · ' + typeName(x[2]) }; });
-  else { var mm = {}, ord = []; daily.forEach(function (x) { var k = x[0].slice(0, 7); if (!(k in mm)) { mm[k] = 0; ord.push(k); } mm[k] += x[1] || 0; }); trend = ord.map(function (k) { return { label: TH_M[+k.slice(5) - 1], v: mm[k], tip: '<b>' + esc(thMonth(k)) + '</b><br>' + fmt(mm[k], 0) + ' ราย' }; }); }
-  var fyBars = fy.months.map(function (m, i) { var pv = fy.prevMonths[i] ? fy.prevMonths[i][1] : null; return { label: TH_M[+m[0].slice(5) - 1], v: m[1] || 0, ghost: pv || 0, tip: '<b>' + esc(thMonth(m[0])) + '</b><br>' + (m[1] == null ? 'ยังไม่มีข้อมูล' : fmt(m[1], 0) + ' ราย') + (pv ? '<br><span style="opacity:.75">ปีงบก่อน ' + fmt(pv, 0) + ' ราย</span>' : '') }; });
-  var sparkVals = daily.slice(-30).map(function (x) { return x[1]; });
-  var fyEnd = (fy.fy - 543) + '-09-30', lastH = fy.heat.length ? fy.heat[fy.heat.length - 1][0] : (fy.fy - 544) + '-09-30';
-  for (var dd = addDays(lastH, 1); dd <= fyEnd; dd = addDays(dd, 1)) fy.heat.push([dd, null, '']);   // ทั้งปีงบ (วันที่ยังไม่ถึง = ช่องว่าง)
-  var hmx = Math.max.apply(null, fy.heat.map(function (x) { return x[1] || 0; }).concat([1]));
-  var firstDow = pd(fy.heat[0][0]).getDay(), heat = '';
-  for (var k = 0; k < firstDow; k++) heat += '<i style="visibility:hidden"></i>';
-  fy.heat.forEach(function (x, i) { heat += '<i data-tip="' + esc('<b>' + thDate(x[0], true) + '</b><br>' + (x[1] == null ? (x[0] > S.boot.today ? 'ยังไม่ถึง' : 'ไม่มีข้อมูล') : fmt(x[1], 0) + ' ราย')) + '" style="background:' + (x[0] > S.boot.today ? 'var(--surface-2);box-shadow:inset 0 0 0 1px var(--line)' : heatColor(x[1], hmx)) + ';animation-delay:' + (i * .002).toFixed(3) + 's"></i>'; });
-  var clin = (c.clinics || []).slice(0, 10).map(function (x) { return ['<span class="code">' + esc(x[0]) + '</span> ' + esc(clinicShort(x[0])), x[1], x[0] + ' ' + clinicShort(x[0])]; });
-  var docs = (c.doctors || []).slice(0, 10).map(function (x) { return [esc(x[0]), x[1], x[0]]; });
-  var procs = Object.keys(c.procs || {}).map(function (k) { return [esc(itemName(k)), c.procs[k], itemName(k)]; }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 10);
-  box.innerHTML = (c.nodataDays ? '<div class="banner warn" style="margin-bottom:12px">ยังไม่มียอดจาก API ' + c.nodataDays + ' วันในช่วงนี้</div>' : '') +
-    '<div class="stats">' +
-      '<div class="stat rise d1"><span class="lb">' + IC.users + 'ผู้ป่วยทั้งหมด</span><span class="v"><span data-count="' + c.total + '">0</span><small>ราย</small></span>' + deltaHtml(c.total, p && p.total, DASH.mode, okPrev, req.partial) + miniLine(sparkVals) + '</div>' +
-      '<div class="stat rise d2"><span class="lb">' + IC.pulse + 'เฉลี่ยต่อวันทำการ</span><span class="v"><span data-count="' + wdAvg + '" data-dec="1">0</span><small>ราย/วัน</small></span>' + deltaHtml(wdAvg, pwd, DASH.mode, okPrev, req.partial) + '</div>' +
-      '<div class="stat rise d3"><span class="lb">' + IC.cal + 'เฉลี่ยวันหยุด</span><span class="v"><span data-count="' + (c.off.n ? c.off.vn / c.off.n : 0) + '" data-dec="1">0</span><small>ราย/วัน</small></span><span class="d muted">' + c.off.n + ' วัน (เสาร์–อาทิตย์/นักขัตฤกษ์)</span></div>' +
-      '<div class="stat rise d4"><span class="lb">' + IC.syringe + 'หัตถการรวม</span><span class="v"><span data-count="' + c.procTotal + '">0</span><small>ครั้ง</small></span><span class="d muted">' + (c.total ? fmt(c.procTotal / c.total * 100) + ' ครั้งต่อผู้ป่วย 100 ราย' : '') + (c.missingDays ? ' · ยังไม่คีย์ ' + c.missingDays + ' วัน' : '') + '</span></div></div>' +
-    '<div class="dash-grid" style="margin-top:18px">' +
-      '<section class="card wide rise d2"><div class="card-h"><h3><span class="ic">' + IC.dash + '</span>' + (long ? 'ผู้ป่วยรายเดือน' : 'แนวโน้มผู้ป่วยรายวัน') + '</h3>' + (long ? '' : '<div class="legend"><span><i style="background:var(--brand)"></i>วันทำการ</span><span><i style="background:var(--off)"></i>เสาร์–อาทิตย์</span><span><i style="background:var(--hol)"></i>วันหยุดนักขัตฤกษ์</span></div>') + '</div><div class="card-b">' + barChart(trend, { h: 240, aria: 'แนวโน้มผู้ป่วย', maxLabels: long ? 12 : 31 }) + '</div></section>' +
-      '<section class="card rise d3"><div class="card-h"><h3><span class="ic">' + IC.clinic + '</span>Top 10 คลินิก</h3><span class="small muted">ผู้ป่วย (ราย)</span></div><div class="card-b">' + hbars(clin) + '</div></section>' +
-      '<section class="card rise d3"><div class="card-h"><h3><span class="ic">' + IC.users + '</span>Top 10 แพทย์</h3><span class="small muted">ผู้ป่วย (ราย)</span></div><div class="card-b">' + hbars(docs) + '</div></section>' +
-      '<section class="card rise d4"><div class="card-h"><h3><span class="ic">' + IC.syringe + '</span>หัตถการ Top 10</h3><span class="small muted">ครั้ง</span></div><div class="card-b">' + hbars(procs) + '</div></section>' +
-      '<section class="card rise d4"><div class="card-h"><h3><span class="ic">' + IC.dash + '</span>รายเดือน ปีงบ ' + fy.fy + '</h3><div class="legend"><span><i style="background:var(--brand)"></i>ปีงบ ' + fy.fy + '</span><span><i style="background:transparent;outline:1.5px dashed var(--muted)"></i>ปีงบ ' + (fy.fy - 1) + '</span></div></div><div class="card-b">' + barChart(fyBars, { w: 440, h: 250, aria: 'ผู้ป่วยรายเดือนในปีงบ', maxLabels: 12 }) +
-        '<p class="small muted" style="margin:8px 0 0">รวมปีงบ ' + fy.fy + ' <b>' + fmt(fy.total, 0) + '</b> ราย' + (fy.prevTotal ? ' · ปีงบ ' + (fy.fy - 1) + ' ' + fmt(fy.prevTotal, 0) + ' ราย' : '') + '</p></div></section>' +
-      '<section class="card wide rise d5"><div class="card-h"><h3><span class="ic">' + IC.cal + '</span>ปฏิทินความหนาแน่น ปีงบ ' + fy.fy + '</h3><span class="heatlegend">น้อย ' + [0, 1, 2, 3, 4, 5].map(function (k) { return '<i style="background:var(--heat-' + k + ')"></i>'; }).join('') + ' มาก</span></div><div class="card-b"><div class="heatmap">' + heat + '</div><div class="row xs muted" style="justify-content:space-between;margin-top:6px"><span>ต.ค. ' + (fy.fy - 1) + '</span><span>ก.ย. ' + fy.fy + '</span></div></div></section>' +
+function drawDash() {
+  var box = $('#dashBody'), req = DASH.req; if (!box) return;
+  var f = filt(), c = anAgg(req.from, req.to, f), p = anAgg(req.prevFrom, req.prevTo, f), okPrev = p.openDays > 0 && !p.nodata, by = f.by;
+  var y = req.fy - 543, fs = (y - 1) + '-10-01', fe = y + '-09-30';
+  var fyA = anAgg(fs, fe, f), fyB = anAgg((y - 2) + '-10-01', (y - 1) + '-09-30', f), mA = {}, mB = {};
+  fyA.daily.forEach(function (x) { if (x[1] != null) { var k = x[0].slice(5, 7); mA[k] = (mA[k] || 0) + x[1]; } });
+  fyB.daily.forEach(function (x) { if (x[1] != null) { var k = x[0].slice(5, 7); mB[k] = (mB[k] || 0) + x[1]; } });
+  var fyBars = ['10', '11', '12', '01', '02', '03', '04', '05', '06', '07', '08', '09'].map(function (k) { return { label: TH_M[+k - 1], v: mA[k] || 0, ghost: mB[k] || 0, color: 'var(--c1)', tip: '<b>' + TH_MF[+k - 1] + '</b><br>ปีงบ ' + req.fy + ': ' + (k in mA ? fmt(mA[k], 0) + ' ราย' : 'ยังไม่มีข้อมูล') + (mB[k] ? '<br><span style="opacity:.75">ปีงบ ' + (req.fy - 1) + ': ' + fmt(mB[k], 0) + ' ราย</span>' : '') }; });
+  var dmap = {}; fyA.daily.forEach(function (x) { dmap[x[0]] = x[1]; });
+  var rows = anRows(c, by), second = by === 'doc' ? 'clinic' : 'doc', rows2 = anRows(c, second);
+  var procs = Object.keys(c.procs || {}).map(function (k) { return [esc(itemName(k)), c.procs[k], itemName(k), 'var(--c3)']; }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 10);
+  var sy = scrollY;
+  box.innerHTML = filterBar(req.from, req.to, drawDash) + (filtDesc() ? '<div class="fdesc">' + IC.filter + '<span>' + esc(filtDesc()) + '</span></div>' : '') +
+    (c.nodata ? '<div class="banner warn">ยังไม่มียอดจากระบบโรงพยาบาล ' + c.nodata + ' วันในช่วงนี้</div>' : '') +
+    statCards(c, p, DASH.mode, req.partial, okPrev) +
+    '<div class="dash-grid" style="margin-top:18px">' + trendCard(c, 'lblD', 'wide') +
+      '<section class="card rise d3"><div class="card-h"><h3><span class="ic">' + IC.tag + '</span>สัดส่วนผู้ป่วยตาม' + BY_TH[by] + '</h3><span class="small muted">กดชิ้นเพื่อกรอง</span></div><div class="card-b">' + donut(anDonut(rows, by), { aria: 'สัดส่วนตาม' + BY_TH[by] }) + '</div></section>' +
+      '<section class="card rise d3"><div class="card-h"><h3><span class="ic">' + (by === 'doc' ? IC.users : IC.clinic) + '</span>Top 10 ' + BY_TH[by] + '</h3><span class="small muted">ผู้ป่วย (ราย)</span></div><div class="card-b">' + hbars(rows.slice(0, 10).map(function (x) { return [x.name, x.v, x.title, by === 'doc' ? 'var(--c1)' : x.color, x.pick]; })) + '</div></section>' +
+      '<section class="card rise d4"><div class="card-h"><h3><span class="ic">' + (second === 'doc' ? IC.users : IC.clinic) + '</span>Top 10 ' + BY_TH[second] + '</h3><span class="small muted">ผู้ป่วย (ราย)</span></div><div class="card-b">' + hbars(rows2.slice(0, 10).map(function (x) { return [x.name, x.v, x.title, second === 'doc' ? 'var(--c1)' : x.color, x.pick]; })) + '</div></section>' +
+      '<section class="card rise d4"><div class="card-h"><h3><span class="ic">' + IC.syringe + '</span>หัตถการ Top 10</h3>' + (procNote() || '<span class="small muted">ครั้ง</span>') + '</div><div class="card-b">' + hbars(procs) + '</div></section>' +
+      '<section class="card wide rise d4"><div class="card-h"><h3><span class="ic">' + IC.dash + '</span>รายเดือน ปีงบ ' + req.fy + ' เทียบปีงบ ' + (req.fy - 1) + '</h3><div class="row"><div class="legend"><span><i style="background:var(--c1)"></i>ปีงบ ' + req.fy + '</span><span><i style="background:transparent;outline:1.5px dashed var(--muted)"></i>ปีงบ ' + (req.fy - 1) + '</span></div>' + labelsToggle('lblF') + '</div></div><div class="card-b">' + barChart(fyBars, { w: 900, h: 260, labels: labelsOn(), aria: 'ผู้ป่วยรายเดือนในปีงบ', maxLabels: 12 }) +
+        '<p class="small muted" style="margin:8px 0 0">รวมปีงบ ' + req.fy + ' <b>' + fmt(fyA.total, 0) + '</b> ราย' + (fyB.total ? ' · ปีงบ ' + (req.fy - 1) + ' ' + fmt(fyB.total, 0) + ' ราย' : '') + (filtDesc() ? ' · ตามตัวกรอง' : '') + '</p></div></section>' +
+      '<section class="card wide rise d5"><div class="card-h"><h3><span class="ic">' + IC.cal + '</span>ปฏิทินความหนาแน่น ปีงบ ' + req.fy + '</h3><span class="small muted">1 ช่อง = 1 วัน · ชี้เพื่อดูยอด</span></div><div class="card-b">' + heatmapHtml(fs, fe, function (d) { return d in dmap ? dmap[d] : null; }) + '</div></section>' +
     '</div>';
-  countUp(box); bindTips(box);
+  bindFilterBar(); bindPicks(box); countUp(box); bindTips(box);
+  ['lblD', 'lblF'].forEach(function (id) { var lb = $('#' + id); if (lb) lb.onchange = function () { store('chartLabels', lb.checked); drawDash(); }; });
+  if (sy) window.scrollTo(0, sy);
 }
 
 /* =====================================================================
@@ -200,10 +256,11 @@ function drawDash(D, req) {
    ===================================================================== */
 var SET = { tab: 'clinics', data: null };
 function pageSet() {
-  var tabs = [['clinics', 'คลินิก'], ['items', 'หัตถการ'], ['pos', 'ตำแหน่งเจ้าหน้าที่'], ['users', 'ผู้ใช้'], ['conn', 'การเชื่อมต่อ'], ['backfill', 'ข้อมูลย้อนหลัง'], ['audit', 'ประวัติการแก้ไข']];
-  $('#main').innerHTML = banners() + '<div class="pagehead rise"><div><div class="eyebrow">ตั้งค่า · แอดมิน</div><h1>' + tabs.filter(function (t) { return t[0] === SET.tab; })[0][1] + '</h1></div></div>' +
+  var tabs = [['clinics', 'คลินิก'], ['groups', 'กลุ่มคลินิก'], ['items', 'หัตถการ'], ['pos', 'ตำแหน่งเจ้าหน้าที่'], ['users', 'ผู้ใช้'], ['conn', 'การเชื่อมต่อ'], ['backfill', 'ข้อมูลย้อนหลัง'], ['audit', 'ประวัติการแก้ไข']];
+  $('#main').innerHTML = banners() + '<div class="pagehead rise"><div><div class="eyebrow">ตั้งค่า · แอดมิน</div><h1>' + tabs.filter(function (t) { return t[0] === SET.tab; })[0][1] + '</h1></div><div class="row">' + helpBtn() + '</div></div>' +
     '<div class="tabs" role="tablist">' + tabs.map(function (t) { return '<button role="tab" data-st="' + t[0] + '" aria-selected="' + (SET.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div><section class="card rise d1" style="padding:18px" id="setBody"><div class="skel" style="height:240px"></div></section>';
   $$('[data-st]').forEach(function (b) { b.onclick = function () { SET.tab = b.getAttribute('data-st'); pageSet(); }; });
+  bindHelp($('#main'));
   if (SET.tab === 'audit') return drawAudit();
   api('getAdmin', {}, { onCache: function (d) { SET.data = d; drawSet(); } }).then(function (d) { SET.data = d; if (S.page === 'set') drawSet(); }).catch(function (e) { toast(e.message, true); });
 }
@@ -214,12 +271,14 @@ function drawSet() {
   var t = SET.tab;
   if (t === 'clinics') {
     var list = d.clinics.slice().sort(function (a, b2) { return (a.order - b2.order) || (b2.vn - a.vn); });
-    b.innerHTML = '<p class="small muted" style="margin-top:0">คลินิกใหม่ที่ API ส่งมาจะเพิ่มเองและแสดงไว้ก่อน · <b>ปิด</b> = ไม่แสดงและไม่นับในยอดรวมทุกหน้า (ข้อมูลดิบยังเก็บครบ เปิดกลับได้) · ลำดับว่าง = เรียงตามจำนวนผู้ป่วย</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th>แสดง</th><th>รหัส</th><th>ชื่อย่อบนรายงาน</th><th>ชื่อจาก API</th><th class="num">ลำดับ</th><th class="num">ผู้ป่วยสะสม</th><th>พบล่าสุด</th></tr></thead><tbody>' +
-      list.map(function (c) { return '<tr data-code="' + esc(c.code) + '"><td><label class="switch"><input type="checkbox" data-k="show"' + (c.show ? ' checked' : '') + ' aria-label="แสดง ' + esc(c.code) + '"><span></span></label></td><td><span class="code">' + esc(c.code) + '</span></td><td><input type="text" data-k="short" value="' + esc(c.short) + '" maxlength="40" style="width:150px" aria-label="ชื่อย่อ ' + esc(c.code) + '"></td><td class="small muted">' + esc(c.name) + '<br>' + esc(c.group) + '</td><td class="num"><input type="number" data-k="order" value="' + (c.order < 999 ? c.order : '') + '" style="width:64px" aria-label="ลำดับ ' + esc(c.code) + '"></td><td class="num">' + fmt(c.vn, 0) + '</td><td class="small muted">' + (c.last ? esc(thDate(c.last)) : '–') + '</td></tr>'; }).join('') + '</tbody></table></div>' + saveBtn('sv');
+    b.innerHTML = '<p class="small muted" style="margin-top:0">คลินิกใหม่ที่ API ส่งมาจะเพิ่มเองและแสดงไว้ก่อน · <b>ปิด</b> = ไม่แสดงและไม่นับในยอดรวมทุกหน้า (ข้อมูลดิบยังเก็บครบ เปิดกลับได้) · ลำดับว่าง = เรียงตามจำนวนผู้ป่วย</p><div class="tbl-wrap"><table class="tbl"><thead><tr><th>แสดง</th><th>รหัส</th><th>ชื่อย่อบนรายงาน</th><th>ชื่อจาก API</th><th>กลุ่ม</th><th class="num">ลำดับ</th><th class="num">ผู้ป่วยสะสม</th><th>พบล่าสุด</th></tr></thead><tbody>' +
+      list.map(function (c) { return '<tr data-code="' + esc(c.code) + '"><td><label class="switch"><input type="checkbox" data-k="show"' + (c.show ? ' checked' : '') + ' aria-label="แสดง ' + esc(c.code) + '"><span></span></label></td><td><span class="code">' + esc(c.code) + '</span></td><td><input type="text" data-k="short" value="' + esc(c.short) + '" maxlength="40" style="width:150px" aria-label="ชื่อย่อ ' + esc(c.code) + '"></td><td class="small muted">' + esc(c.name) + '<br>' + esc(c.group) + '</td><td class="small">' + (c.groupId ? '<span class="gchip"><i style="background:' + palOf((d.groups.filter(function (g) { return g.id === c.groupId; })[0] || {}).color) + '"></i>' + esc((d.groups.filter(function (g) { return g.id === c.groupId; })[0] || {}).name || '') + '</span>' : '<span class="muted">–</span>') + '</td><td class="num"><input type="number" data-k="order" value="' + (c.order < 999 ? c.order : '') + '" style="width:64px" aria-label="ลำดับ ' + esc(c.code) + '"></td><td class="num">' + fmt(c.vn, 0) + '</td><td class="small muted">' + (c.last ? esc(thDate(c.last)) : '–') + '</td></tr>'; }).join('') + '</tbody></table></div>' + saveBtn('sv');
     $('#sv').onclick = function () {
       var out = $$('tr[data-code]', b).map(function (tr) { return { code: tr.getAttribute('data-code'), show: $('[data-k=show]', tr).checked, short: $('[data-k=short]', tr).value, order: $('[data-k=order]', tr).value }; });
       busy($('#sv'), api('saveClinics', { list: out, _rid: rid() }), 'กำลังบันทึก…').then(function (r) { toast('บันทึกแล้ว ' + r.saved + ' คลินิก'); forget('get'); return refreshBoot(); }).catch(function (e) { toast(e.message, true); });
     };
+  } else if (t === 'groups') {
+    drawGroups(b, d);
   } else if (t === 'items') {
     var its = d.items.slice().sort(function (a, b2) { return a.order - b2.order; });
     var draw = function () {
@@ -288,14 +347,17 @@ function drawSet() {
       '<div class="row"><button class="btn" id="tduty">' + IC.refresh + 'ทดสอบ SMC Duty</button><button class="btn" id="scal">' + IC.cal + 'ซิงก์วันหยุดตอนนี้</button><span class="small" id="tdutyR"></span></div>' +
       '<dl class="kvlist"><dt>โหมด API</dt><dd>' + (c.apiModeCheckedAt ? (c.apiTodayOnly ? '<span class="chip warn">ส่งเฉพาะยอดวันนี้</span> <span class="xs muted">ระบบเก็บยอดวันนี้ทุก 30 นาที · ดึงย้อนหลังไม่ได้ ขอไอทีให้รับ search_st</span>' : '<span class="chip ok">รับวันที่ ดึงย้อนหลังได้</span>') + ' <span class="xs muted">ตรวจ ' + esc(stampTh(c.apiModeCheckedAt)) + '</span>' : '<span class="muted">ยังไม่ได้ตรวจ (กดทดสอบ API)</span>') + '</dd><dt>ซิงก์วันหยุดล่าสุด</dt><dd>' + esc(stampTh(c.calendarSyncedAt) || '–') + '</dd><dt>งานกลางคืนล่าสุด</dt><dd class="small">' + esc(c.lastNightly || '–') + '</dd><dt>เก็บยอดปิดวันล่าสุด</dt><dd class="small">' + esc(c.lastEvening || '–') + '</dd><dt>หลังบ้าน build</dt><dd>' + esc(d.build) + '</dd></dl><hr style="border:0;border-top:1px solid var(--line);width:100%">' +
       '<label class="field" for="clh">บรรทัดแรกของข้อความไลน์<input id="clh" type="text" value="' + esc(c.lineHeader) + '" maxlength="120"></label>' +
-      '<label class="field" for="crt">หัวกระดาษใบรายงาน<input id="crt" type="text" value="' + esc(c.reportTitle) + '" maxlength="160"></label></div>' + saveBtn('sv');
+      '<label class="field" for="crt">หัวกระดาษใบรายงาน<input id="crt" type="text" value="' + esc(c.reportTitle) + '" maxlength="160"></label>' +
+      '<label class="field" for="cct">ข้อมูลติดต่อท้ายระบบ<input id="cct" type="text" value="' + esc(c.contactText || '') + '" maxlength="160" placeholder="เช่น เจ้าหน้าที่ประสานงาน โทรภายใน 13507"></label>' +
+      '<label class="field" for="cmu">ลิงก์คู่มือการใช้งาน (ปุ่ม ? ในระบบ)<input id="cmu" type="text" value="' + esc(c.manualUrl || '') + '" maxlength="300" placeholder="https://…"></label>' +
+      '<dl class="kvlist"><dt>ประวัติการแก้ไขที่เก็บถาวร</dt><dd>' + (c.auditArchived ? fmt(c.auditArchived, 0) + ' แถว · ไฟล์ "SMC Daily — ประวัติการแก้ไข (เก็บถาวร)" ใน Google Drive ของบัญชีคลินิก' : '<span class="muted">ยังไม่มี (ระบบย้ายเองเมื่อเกิน 20,000 แถว)</span>') + '</dd></dl></div>' + saveBtn('sv');
     var res = function (el, r) { $(el).innerHTML = r.ok ? '<span style="color:var(--ok)">✓ ' + r.text + '</span>' : '<span style="color:var(--bad)">✗ ' + esc(r.text) + '</span>'; };
     $('#tapi').onclick = function () { $('#tapiR').innerHTML = '<span class="muted">กำลังถาม API 2 วันที่ (วันนี้ + 7 วันก่อน)…</span>'; busy($('#tapi'), api('testApi', {}), 'กำลังทดสอบ…').then(function (r) { res('#tapiR', r.ok ? { ok: 1, text: 'วันนี้ได้ ' + r.rows + ' แถว ผู้ป่วย ' + fmt(r.total, 0) + ' ราย (' + (r.ms / 1000).toFixed(1) + ' วิ) · ' + (r.todayOnly ? '⚠ API ส่งเฉพาะยอดวันนี้ ดึงย้อนหลังไม่ได้' : 'API รับวันที่ ดึงย้อนหลังได้') } : { text: r.error }); forget('getAdmin'); }).catch(function (e) { res('#tapiR', { text: e.message }); }); };
     $('#tduty').onclick = function () { $('#tdutyR').innerHTML = ''; busy($('#tduty'), api('testDuty', {}), 'กำลังทดสอบ…').then(function (r) { res('#tdutyR', r.ok ? { ok: 1, text: 'เชื่อมต่อได้ · วันนี้ ' + r.people + ' คนในตารางเวร · ' + r.positions + ' ตำแหน่ง' } : { text: r.error }); }).catch(function (e) { res('#tdutyR', { text: e.message }); }); };
     $('#scal').onclick = function () { busy($('#scal'), api('syncCalendar', {}), 'กำลังซิงก์…').then(function (r) { toast('ซิงก์วันหยุดแล้ว ' + r.days + ' วัน'); refreshBoot(); }).catch(function (e) { toast(e.message, true); }); };
     $('#gkey').onclick = function () { busy($('#gkey'), api('newDutyKey', {})).then(function (r) { $('#ckey').value = r.key; $('#gkeyBox').innerHTML = '<div class="secret">' + esc(r.key) + '</div><p class="xs muted">คัดลอกรหัสนี้ไปวางในไฟล์ DailyFeed ของ SMC Duty (บรรทัด var DAILY_FEED_KEY = \'…\') แล้วกดบันทึกด้านล่าง</p>'; }).catch(function (e) { toast(e.message, true); }); };
     $('#sv').onclick = function () {
-      var p = { apiUrl: $('#capi').value, smcDutyUrl: $('#cduty').value, lineHeader: $('#clh').value, reportTitle: $('#crt').value, _rid: rid() };
+      var p = { apiUrl: $('#capi').value, smcDutyUrl: $('#cduty').value, lineHeader: $('#clh').value, reportTitle: $('#crt').value, contactText: $('#cct').value, manualUrl: $('#cmu').value, _rid: rid() };
       if ($('#ckey').value) p.smcDutyKey = $('#ckey').value;
       busy($('#sv'), api('saveConnection', p), 'กำลังบันทึก…').then(function () { toast('บันทึกแล้ว'); forget('getAdmin'); refreshBoot().then(pageSet); }).catch(function (e) { toast(e.message, true); });
     };
@@ -316,9 +378,57 @@ function showTemp(u, pw) { modal('รหัสผ่านชั่วครา�
 function drawAudit() {
   var b = $('#setBody');
   api('getAudit', { limit: 300 }).then(function (r) {
-    var A = { PROC: 'หัตถการ', FIELD: 'ยอดอื่น', STAFF: 'เจ้าหน้าที่', ADD_ITEM: 'เพิ่มรายการ', CLINIC: 'คลินิก', ADD_USER: 'เพิ่มผู้ใช้', EDIT_USER: 'แก้ผู้ใช้', RESET_PASSWORD: 'ตั้งรหัสใหม่', CHANGE_PASSWORD: 'เปลี่ยนรหัส', CONNECTION: 'การเชื่อมต่อ', BACKFILL: 'ดึงย้อนหลัง' };
+    var A = { CASE_ADD: 'เพิ่มผู้ป่วยส่งต่อ', CASE_EDIT: 'แก้ผู้ป่วยส่งต่อ', CASE_DEL: 'ลบผู้ป่วยส่งต่อ', GROUPS: 'กลุ่มคลินิก', PROC: 'หัตถการ', FIELD: 'ยอดอื่น', STAFF: 'เจ้าหน้าที่', ADD_ITEM: 'เพิ่มรายการ', CLINIC: 'คลินิก', ADD_USER: 'เพิ่มผู้ใช้', EDIT_USER: 'แก้ผู้ใช้', RESET_PASSWORD: 'ตั้งรหัสใหม่', CHANGE_PASSWORD: 'เปลี่ยนรหัส', CONNECTION: 'การเชื่อมต่อ', BACKFILL: 'ดึงย้อนหลัง' };
     b.innerHTML = r.rows.length ? '<div class="tbl-wrap" style="max-height:600px;overflow:auto"><table class="tbl"><thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>เรื่อง</th><th>วันที่รายงาน</th><th>ช่อง</th><th class="num">เดิม</th><th class="num">ใหม่</th></tr></thead><tbody>' +
       r.rows.map(function (x) { return '<tr><td class="small tnum">' + esc(stampTh(x[0])) + '</td><td>' + esc(x[1]) + '</td><td><span class="chip idle">' + esc(A[x[2]] || x[2]) + '</span></td><td class="small">' + (x[3] ? esc(thDate(x[3])) : '') + '</td><td>' + esc(x[4]) + '</td><td class="num muted">' + esc(x[5] || '–') + '</td><td class="num">' + esc(x[6] || '–') + '</td></tr>'; }).join('') + '</tbody></table></div>'
       : '<div class="empty">' + IC.inbox + 'ยังไม่มีประวัติการแก้ไข</div>';
   }).catch(function (e) { toast(e.message, true); });
+}
+
+/* ---------- กลุ่มคลินิก ---------- */
+function drawGroups(b, d) {
+  var groups = d.groups.map(function (g) { return { id: g.id, name: g.name, color: g.color }; });
+  var assign = {}; d.clinics.forEach(function (c) { assign[c.code] = c.groupId || ''; });
+  var q = '', onlyNone = false, tmp = 0, sel = {};
+  var draw = function () {
+    var cnt = {}; Object.keys(assign).forEach(function (k) { cnt[assign[k]] = (cnt[assign[k]] || 0) + 1; });
+    var cl = d.clinics.slice().sort(function (a, b2) { return b2.vn - a.vn; }).filter(function (c) {
+      if (onlyNone && assign[c.code]) return false;
+      return !q || (c.code + ' ' + c.short + ' ' + c.name).toLowerCase().indexOf(q.toLowerCase()) >= 0;
+    });
+    var opts = function (cur) { return '<option value="">— ยังไม่จัดกลุ่ม —</option>' + groups.map(function (g) { return '<option value="' + esc(g.id) + '"' + (cur === g.id ? ' selected' : '') + '>' + esc(g.name || '(ยังไม่ตั้งชื่อ)') + '</option>'; }).join(''); };
+    b.innerHTML = '<p class="small muted" style="margin-top:0">สร้างกลุ่มเพื่อใช้กรองและสรุปในหน้ารายงาน/แดชบอร์ด · 1 คลินิกอยู่ได้ 1 กลุ่ม · สีของกลุ่มใช้ในกราฟทุกหน้า</p>' +
+      '<div class="glist">' + (groups.length ? groups.map(function (g, i) {
+        return '<div class="gitem"><div class="sw" role="group" aria-label="สีกลุ่ม">' + PAL_HEX.map(function (h, k) { return '<button type="button" data-gc="' + i + '" data-hex="' + h + '" style="background:' + PAL[k] + '" aria-pressed="' + (String(g.color).toLowerCase() === h) + '" aria-label="สี ' + (k + 1) + '"></button>'; }).join('') + '</div>' +
+          '<input type="text" data-gn="' + i + '" value="' + esc(g.name) + '" maxlength="60" placeholder="ชื่อกลุ่ม เช่น ศัลยกรรม" aria-label="ชื่อกลุ่ม">' +
+          '<span class="chip idle">' + (cnt[g.id] || 0) + ' คลินิก</span>' +
+          '<span class="row" style="flex-wrap:nowrap"><button class="iconbtn" data-gu="' + i + '" aria-label="เลื่อนขึ้น"' + (i === 0 ? ' disabled' : '') + '>' + IC.up + '</button><button class="iconbtn" data-gd="' + i + '" aria-label="เลื่อนลง"' + (i === groups.length - 1 ? ' disabled' : '') + '>' + IC.down + '</button><button class="iconbtn" data-gx="' + i + '" aria-label="ลบกลุ่ม">' + IC.trash + '</button></span></div>';
+      }).join('') : '<div class="empty" style="padding:14px">' + IC.tag + 'ยังไม่มีกลุ่ม · กด "เพิ่มกลุ่ม" เพื่อเริ่ม</div>') + '</div>' +
+      '<div class="row" style="margin:10px 0 18px"><button class="btn" id="gadd">' + IC.plus + 'เพิ่มกลุ่ม</button></div>' +
+      '<div class="row" style="justify-content:space-between;margin-bottom:8px"><b>เลือกกลุ่มให้คลินิก</b><div class="row"><input type="search" id="gq" placeholder="ค้นหาคลินิก" value="' + esc(q) + '" aria-label="ค้นหาคลินิก"><label class="row small" for="gnone"><input type="checkbox" id="gnone"' + (onlyNone ? ' checked' : '') + '> เฉพาะที่ยังไม่จัดกลุ่ม</label></div></div>' +
+      '<div class="row gbulk"><span class="small muted">เลือกหลายคลินิกแล้วย้ายพร้อมกัน:</span><select id="gbsel" aria-label="ย้ายไปกลุ่ม">' + opts('') + '</select><button class="btn btn-sm" id="gbgo">ย้ายที่เลือก (' + Object.keys(sel).length + ')</button></div>' +
+      '<div class="tbl-wrap" style="max-height:520px;overflow:auto"><table class="tbl"><thead><tr><th><input type="checkbox" id="gall" aria-label="เลือกทั้งหมดที่เห็น"></th><th>คลินิก</th><th>ชื่อจาก API</th><th class="num">ผู้ป่วยสะสม</th><th>กลุ่ม</th></tr></thead><tbody>' +
+      cl.map(function (c) { return '<tr><td><input type="checkbox" data-gsel="' + esc(c.code) + '"' + (sel[c.code] ? ' checked' : '') + ' aria-label="เลือก ' + esc(c.code) + '"></td><td><span class="code">' + esc(c.code) + '</span> ' + esc(c.short) + (c.show ? '' : ' <span class="chip idle">ซ่อน</span>') + '</td><td class="small muted">' + esc(c.name) + '</td><td class="num">' + fmt(c.vn, 0) + '</td><td><select data-ga="' + esc(c.code) + '" aria-label="กลุ่มของ ' + esc(c.code) + '">' + opts(assign[c.code]) + '</select></td></tr>'; }).join('') +
+      '</tbody></table></div>' + saveBtn('sv');
+    $$('[data-gn]', b).forEach(function (x) { x.oninput = function () { groups[+x.getAttribute('data-gn')].name = x.value; }; x.onchange = draw; });
+    $$('[data-gc]', b).forEach(function (x) { x.onclick = function () { groups[+x.getAttribute('data-gc')].color = x.getAttribute('data-hex'); draw(); }; });
+    $$('[data-gu]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-gu'), t2 = groups[i]; groups[i] = groups[i - 1]; groups[i - 1] = t2; draw(); }; });
+    $$('[data-gd]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-gd'), t2 = groups[i]; groups[i] = groups[i + 1]; groups[i + 1] = t2; draw(); }; });
+    $$('[data-gx]', b).forEach(function (x) { x.onclick = function () { var g = groups[+x.getAttribute('data-gx')]; groups.splice(+x.getAttribute('data-gx'), 1); Object.keys(assign).forEach(function (k) { if (assign[k] === g.id) assign[k] = ''; }); draw(); toast('ลบกลุ่ม "' + (g.name || '') + '" แล้ว (กดบันทึกเพื่อยืนยัน)'); }; });
+    $('#gadd', b).onclick = function () { var used = groups.map(function (g) { return g.color; }), col = PAL_HEX.filter(function (h) { return used.indexOf(h) < 0; })[0] || PAL_HEX[groups.length % 8]; groups.push({ id: 'new' + (++tmp), name: '', color: col }); draw(); var ins = $$('[data-gn]', b); if (ins.length) ins[ins.length - 1].focus(); };
+    $('#gq', b).oninput = debounce(function (e) { q = e.target.value; draw(); var x = $('#gq', b); x.focus(); x.setSelectionRange(q.length, q.length); }, 250);
+    $('#gnone', b).onchange = function (e) { onlyNone = e.target.checked; draw(); };
+    $$('[data-ga]', b).forEach(function (x) { x.onchange = function () { assign[x.getAttribute('data-ga')] = x.value; }; });
+    var upd = function () { $('#gbgo', b).textContent = 'ย้ายที่เลือก (' + Object.keys(sel).length + ')'; };
+    $$('[data-gsel]', b).forEach(function (x) { x.onchange = function () { if (x.checked) sel[x.getAttribute('data-gsel')] = 1; else delete sel[x.getAttribute('data-gsel')]; upd(); }; });
+    $('#gall', b).onchange = function (e) { $$('[data-gsel]', b).forEach(function (x) { x.checked = e.target.checked; if (e.target.checked) sel[x.getAttribute('data-gsel')] = 1; else delete sel[x.getAttribute('data-gsel')]; }); upd(); };
+    $('#gbgo', b).onclick = function () { var to = $('#gbsel', b).value, n = Object.keys(sel).length; if (!n) return toast('ยังไม่ได้เลือกคลินิก', true); Object.keys(sel).forEach(function (k) { assign[k] = to; }); sel = {}; draw(); toast('ย้าย ' + n + ' คลินิกแล้ว (กดบันทึกเพื่อยืนยัน)'); };
+    $('#sv', b).onclick = function () {
+      if (groups.some(function (g) { return !String(g.name).trim(); })) return toast('กรุณาตั้งชื่อกลุ่มให้ครบ', true);
+      busy($('#sv', b), api('saveGroups', { groups: groups, assign: assign, _rid: rid() }), 'กำลังบันทึก…').then(function (r) {
+        toast('บันทึกกลุ่มแล้ว · ' + r.groups.length + ' กลุ่ม · ย้าย ' + r.moved + ' คลินิก'); forget('getAdmin'); FILT = null; return refreshBoot().then(pageSet);
+      }).catch(function (e) { toast(e.message, true); });
+    };
+  };
+  draw();
 }

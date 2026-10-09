@@ -15,7 +15,7 @@ function dayTypeChip(t, hol) {
   if (t === 'C') return '<span class="chip idle">ปิดคลินิก</span>';
   return '';
 }
-function typeColor(t) { return t === 'W' ? 'var(--brand)' : t === 'H' ? 'var(--hol)' : 'var(--off)'; }
+function typeColor(t) { return t === 'W' ? 'var(--d-w)' : t === 'H' ? 'var(--d-h)' : t === 'C' ? 'var(--idle)' : 'var(--d-s)'; }
 function typeName(t) { return { W: 'วันทำการ', S: 'เสาร์–อาทิตย์', H: 'วันหยุดนักขัตฤกษ์', C: 'ปิดคลินิก' }[t] || ''; }
 
 /* =====================================================================
@@ -124,6 +124,7 @@ function drawDay(quiet) {
         '<label class="field" for="f_other">อื่นๆ<input id="f_other" data-field="other" type="text" maxlength="300" value="' + esc(curField('other')) + '"' + (ed ? '' : ' disabled') + '></label>' +
         '<label class="field" for="f_note">หมายเหตุท้ายรายงาน<textarea id="f_note" data-field="note" rows="2" maxlength="1000" placeholder="เช่น ยอดคลินิกที่ไม่ตรงกับหน้างาน"' + (ed ? '' : ' disabled') + '>' + esc(curField('note')) + '</textarea></label>' +
       '</div></section>' +
+      '<section class="card' + (quiet ? '' : ' rise d4') + '" aria-labelledby="h-case" id="caseCard"></section>' +
     '</div><div class="col">' +
       '<section class="card' + (quiet ? '' : ' rise d2') + '" aria-labelledby="h-proc"><div class="card-h"><h3 id="h-proc"><span class="ic">' + IC.syringe + '</span>หัตถการ <span class="chip brand" id="procSumChip">' + fmt(procSum(procs), 0) + ' ครั้ง</span></h3><span class="savestate" id="savest">' + (ed ? 'บันทึกอัตโนมัติ' : 'ดูอย่างเดียว') + '</span></div>' +
         '<div class="card-b"><div class="procgrid"><div>' + col(1) + '</div><div>' + col(2) + '</div></div>' +
@@ -134,6 +135,7 @@ function drawDay(quiet) {
     '</div></div>' +
     '<section class="card' + (quiet ? '' : ' rise d4') + '" aria-labelledby="h-staff"><div class="card-h"><h3 id="h-staff"><span class="ic">' + IC.users + '</span>เจ้าหน้าที่ปฏิบัติงาน</h3><div class="row small muted" id="staffSrc"></div></div><div class="card-b" id="staffBody"></div></section>';
   drawHero(quiet);
+  drawCases();
   if (DAY.roster) drawStaff(); else $('#staffBody').innerHTML = '<div class="skel" style="height:90px"></div>';
   bindDay();
 }
@@ -267,9 +269,10 @@ function staffList() { return (DAY.roster && DAY.roster.list) || []; }
 function drawStaff() {
   var body = $('#staffBody'), src = $('#staffSrc'); if (!body) return;
   var r = DAY.roster || { list: [] }, ed = canEdit(), list = staffList(), pos = shownPositions();
-  if (src) src.innerHTML = r.source === 'duty' ? 'จากตารางเวร SMC Duty' + (r.at ? ' · ' + esc((r.at || '').slice(11, 16)) + ' น.' : '') :
-    r.source === 'saved' ? 'แก้ไขแล้วโดย ' + esc(r.by || '') + (ed ? ' <button class="btn btn-sm" id="reDuty">' + IC.refresh + 'ดึงจาก SMC Duty ใหม่</button>' : '') :
-    r.source === 'error' ? '<span style="color:var(--warn)">' + IC.warn.replace('<svg', '<svg width="14" height="14"') + ' ' + esc(r.error) + '</span>' : '';
+  if (src) src.innerHTML = (r.source === 'duty' ? '<span>จากตารางเวร SMC Duty' + (r.at ? ' · ซิงก์ ' + esc((r.at || '').slice(11, 16)) + ' น.' : '') + '</span>' :
+    r.source === 'saved' ? '<span>แก้ไขแล้วโดย ' + esc(r.by || '') + (r.at ? ' · ' + esc(String(r.at).slice(11, 16)) + ' น.' : '') + '</span>' :
+    r.source === 'error' ? '<span style="color:var(--warn)">' + IC.warn.replace('<svg', '<svg width="14" height="14"') + ' ' + esc(r.error) + '</span>' : '') +
+    (ed && DAY.data ? ' <button class="btn btn-sm" id="reDuty" title="ดึงรายชื่อจากตารางเวร SMC Duty ล่าสุด">' + IC.refresh + 'ซิงก์ตารางเวร</button>' : '');
   if (!pos.length) { body.innerHTML = '<p class="muted small">ยังไม่ได้เลือกตำแหน่งที่จะแสดง (ตั้งค่า › ตำแหน่ง)</p>'; return; }
   body.innerHTML = pos.map(function (p) {
     var ppl = list.map(function (x, i) { return { x: x, i: i }; }).filter(function (o) { return o.x.pos === p.id; });
@@ -285,9 +288,20 @@ function drawStaff() {
   $$('[data-sclin]', body).forEach(function (inp) { inp.addEventListener('input', function () { staffList()[+inp.getAttribute('data-sclin')].clinic = inp.value; DAY.staffDirty = true; saveStaffSoon(); }); });
   $$('[data-sdel]', body).forEach(function (b) { b.onclick = function () { staffList().splice(+b.getAttribute('data-sdel'), 1); DAY.staffDirty = true; drawStaff(); drawHeroRing(); saveStaff(); }; });
   $$('[data-sadd]', body).forEach(function (b) { b.onclick = function () { addPerson(b.getAttribute('data-sadd')); }; });
-  var rd = $('#reDuty'); if (rd) rd.onclick = function () {
-    busy(rd, api('saveStaff', { date: DAY.data.date, reset: true, list: [], _rid: rid() }), 'กำลังดึง…').then(function () { DAY.roster = null; forget('getRoster'); loadRoster(DAY.data.date, true); toast('ดึงรายชื่อจาก SMC Duty ใหม่แล้ว'); }).catch(function (e) { toast(e.message, true); });
+  var rd = $('#reDuty'); if (rd) rd.onclick = function () { syncRoster(rd); };
+}
+/** ซิงก์ตารางเวรจาก SMC Duty ใหม่ (ถ้าแก้รายชื่อไว้แล้ว → ถามก่อนแทนที่) */
+function syncRoster(btn) {
+  var date = DAY.data.date, saved = DAY.roster && DAY.roster.source === 'saved';
+  var run = function (b) {
+    var p = (saved ? api('saveStaff', { date: date, reset: true, list: [], _rid: rid() }) : Promise.resolve())
+      .then(function () { return api('getRoster', { date: date, force: true, fromDuty: true }); });
+    return busy(b, p, 'กำลังซิงก์…').then(function (r) { forget('getRoster'); if (S.page !== 'today' || S.date !== date) return; DAY.roster = r; drawStaff(); drawHeroRing(); toast(r.source === 'error' ? r.error : 'ซิงก์ตารางเวรแล้ว ' + (r.list || []).length + ' คน', r.source === 'error'); });
   };
+  if (!saved) return run(btn).catch(function (e) { toast(e.message, true); });
+  var m = modal('ซิงก์ตารางเวรใหม่?', '<p style="margin:0">รายชื่อของวันนี้ถูกแก้ไขไว้แล้ว (เพิ่ม/ลบ/ใส่คลินิก) การซิงก์จะ<b>แทนที่ด้วยตารางเวรล่าสุดจาก SMC Duty</b> และสิ่งที่แก้ไว้จะหายไป</p>',
+    '<button class="btn" data-close>ยกเลิก</button><button class="btn btn-brand" id="rsyok">' + IC.refresh + 'ซิงก์และแทนที่</button>', 'sm');
+  $('#rsyok', m).onclick = function () { run($('#rsyok', m)).then(function () { m.close(); }).catch(function (e) { toast(e.message, true); }); };
 }
 function addPerson(posId) {
   var p = (S.boot.positions || []).filter(function (x) { return x.id === posId; })[0] || { short: '', clinicBox: false };
@@ -310,11 +324,84 @@ function saveStaff() {
   }).catch(function (e) { DAY.staffDirty = true; toast('บันทึกรายชื่อไม่สำเร็จ: ' + e.message, true); });
 }
 
+/* ---------- ผู้ป่วยส่งต่อ (Admit / Consult / Night OPD) ---------- */
+var CASE_T = { admit: 'Admit', consult: 'Consult แผนกอื่น', nightOpd: 'โอน Night OPD ชั้น 4' };
+var CASE_SHORT = { admit: 'Admit', consult: 'Consult', nightOpd: 'Night OPD' };
+function dayCases() { return (DAY.data && DAY.data.cases) || []; }
+function maskName(n) { n = String(n || '').trim(); if (!n) return ''; var p = n.split(/\s+/); return p.map(function (w, i) { return i === 0 && p.length > 1 && /^(นาย|นาง|น\.ส\.|ด\.ช\.|ด\.ญ\.|เด็กชาย|เด็กหญิง|นางสาว)$/.test(w) ? w : w.charAt(0) + '•••'; }).join(' '); }
+function maskHn(h) { h = String(h || ''); return h.length > 3 ? h.slice(0, Math.max(2, h.length - 3)) + '•••' : h; }
+function caseLine(x, detail) {
+  if (!detail) return CASE_SHORT[x.type] + (x.dest ? ' → ' + x.dest : '');
+  return CASE_SHORT[x.type] + ': ' + [x.name, x.hn ? 'HN ' + x.hn : '', x.age ? x.age + ' ปี' : ''].filter(Boolean).join(' · ') + (x.dx ? ' · Dx ' + x.dx : '') + (x.dest ? ' → ' + x.dest : '') + (x.note ? ' (' + x.note + ')' : '');
+}
+function drawCases() {
+  var box = $('#caseCard'); if (!box || !DAY.data) return;
+  var ed = canEdit(), list = dayCases(), show = store('caseShow'); if (show === null) show = true;
+  var cnt = { admit: 0, consult: 0, nightOpd: 0 }; list.forEach(function (x) { cnt[x.type]++; });
+  box.innerHTML = '<div class="card-h"><h3 id="h-case"><span class="ic">' + IC.ambul + '</span>ผู้ป่วยส่งต่อ <span class="chip brand">' + list.length + ' ราย</span></h3>' +
+    '<div class="row">' + (list.length ? '<button class="btn btn-sm btn-ghost" id="caseEye" aria-pressed="' + show + '" title="' + (show ? 'ซ่อน' : 'แสดง') + 'ชื่อและ HN บนจอ">' + (show ? IC.eye : IC.eyeOff) + (show ? 'ซ่อนชื่อ' : 'แสดงชื่อ') + '</button>' : '') +
+    (ed ? '<button class="btn btn-sm btn-soft" id="caseAdd">' + IC.plus + 'เพิ่ม</button>' : '') + '</div></div>' +
+    '<div class="card-b">' + (list.length ? '<div class="caselist">' + list.map(function (x) {
+      return '<div class="case t-' + x.type + '"><span class="ctype">' + esc(CASE_SHORT[x.type]) + '</span><div class="cmain"><b>' + esc(show ? (x.name || '(ไม่ระบุชื่อ)') : maskName(x.name) || '•••') + '</b>' +
+        '<span class="cmeta">' + [x.hn ? 'HN ' + esc(show ? x.hn : maskHn(x.hn)) : '', x.age ? esc(x.age) + ' ปี' : '', x.dx ? 'Dx ' + esc(x.dx) : ''].filter(Boolean).join(' · ') + '</span>' +
+        (x.dest || x.note ? '<span class="cmeta">' + (x.dest ? '→ <b>' + esc(x.dest) + '</b>' : '') + (x.note ? (x.dest ? ' · ' : '') + esc(x.note) : '') + '</span>' : '') + '</div>' +
+        (ed ? '<div class="cact"><button class="iconbtn" data-cedit="' + esc(x.id) + '" aria-label="แก้ไข">' + IC.edit + '</button><button class="iconbtn" data-cdel="' + esc(x.id) + '" aria-label="ลบ">' + IC.trash + '</button></div>' : '') + '</div>';
+    }).join('') + '</div><p class="xs muted" style="margin:10px 0 0">Admit ' + cnt.admit + ' · Consult ' + cnt.consult + ' · Night OPD ' + cnt.nightOpd + ' · จำนวนในช่องด้านบนปรับตามรายชื่อให้เอง · ข้อมูลผู้ป่วยแสดงในไลน์/ภาพ/ใบพิมพ์ เฉพาะเมื่อเลือก</p>'
+      : '<div class="empty" style="padding:16px 8px">' + IC.ambul + (ed ? 'ยังไม่มีผู้ป่วยส่งต่อ · กด "+ เพิ่ม" เมื่อมี Admit / Consult / โอน Night OPD' : 'ไม่มีผู้ป่วยส่งต่อ') + '</div>') + '</div>';
+  var eye = $('#caseEye', box); if (eye) eye.onclick = function () { store('caseShow', !show); drawCases(); };
+  var add = $('#caseAdd', box); if (add) add.onclick = function () { caseForm(null); };
+  $$('[data-cedit]', box).forEach(function (b) { b.onclick = function () { caseForm(list.filter(function (x) { return x.id === b.getAttribute('data-cedit'); })[0]); }; });
+  $$('[data-cdel]', box).forEach(function (b) { b.onclick = function () {
+    var x = list.filter(function (y) { return y.id === b.getAttribute('data-cdel'); })[0];
+    var m = modal('ลบรายการนี้?', '<p style="margin:0">' + esc(CASE_T[x.type]) + ' · ' + esc(x.name || '') + (x.hn ? ' HN ' + esc(x.hn) : '') + '</p><p class="small muted">จำนวนในช่องด้านบนจะไม่ลดลงเอง แก้ตัวเลขได้ถ้าต้องการ</p>', '<button class="btn" data-close>ยกเลิก</button><button class="btn btn-brand" id="cdok">' + IC.trash + 'ลบ</button>', 'sm');
+    $('#cdok', m).onclick = function () { saveCaseReq({ date: DAY.data.date, id: x.id, remove: true }, $('#cdok', m)).then(function () { m.close(); toast('ลบแล้ว'); }); };
+  }; });
+}
+function saveCaseReq(p, btn) {
+  p._rid = rid(); var date = p.date;
+  return busy(btn, api('saveCase', p), 'กำลังบันทึก…').then(function (r) {
+    forget('getDay|{"date":"' + date + '"'); forget('getMonth'); forget('getCases'); MP_dirty(date);
+    if (DAY.data && DAY.data.date === date) {
+      DAY.data.cases = r.cases;
+      Object.keys(r.fields || {}).forEach(function (k) { if (!(k in DAY.pend.fields)) { DAY.data.entry[k] = r.fields[k]; var inp = $('#f_' + k); if (inp && document.activeElement !== inp) inp.value = r.fields[k]; } });
+      drawCases();
+    }
+    return r;
+  }).catch(function (e) { toast(e.message, true); throw e; });
+}
+function caseForm(x) {
+  var isNew = !x; x = x || { type: store('caseLastType') || 'admit', name: '', hn: '', age: '', dx: '', dest: '', note: '' };
+  var m = modal(isNew ? 'เพิ่มผู้ป่วยส่งต่อ' : 'แก้ไขผู้ป่วยส่งต่อ', '<form id="cform" class="cform">' +
+    '<div class="seg wide" role="radiogroup" aria-label="ประเภท">' + Object.keys(CASE_T).map(function (k) { return '<button type="button" role="radio" data-ct="' + k + '" aria-pressed="' + (x.type === k) + '">' + esc(CASE_T[k]) + '</button>'; }).join('') + '</div>' +
+    '<div class="g2"><label class="field" for="c_name">ชื่อ-สกุล<input id="c_name" type="text" maxlength="80" value="' + esc(x.name) + '" autocomplete="off"></label>' +
+    '<label class="field" for="c_hn">HN<input id="c_hn" type="text" maxlength="20" value="' + esc(x.hn) + '" autocomplete="off" inputmode="text"></label></div>' +
+    '<div class="g2"><label class="field" for="c_age">อายุ (ปี)<input id="c_age" type="text" maxlength="12" value="' + esc(x.age) + '" inputmode="numeric" autocomplete="off"></label>' +
+    '<label class="field" for="c_dest"><span class="destlbl">' + (x.type === 'admit' ? 'Ward' : 'ส่งต่อหน่วยงาน') + '</span><input id="c_dest" type="text" maxlength="80" value="' + esc(x.dest) + '" placeholder="เช่น Ward 5 / ER / OPD ศัลยกรรม" autocomplete="off"></label></div>' +
+    '<label class="field" for="c_dx">DX / การวินิจฉัย<input id="c_dx" type="text" maxlength="200" value="' + esc(x.dx) + '" autocomplete="off"></label>' +
+    '<label class="field" for="c_note">หมายเหตุ<input id="c_note" type="text" maxlength="200" value="' + esc(x.note) + '" autocomplete="off"></label>' +
+    '<p class="xs muted" style="margin:0">ใส่ชื่อหรือ HN อย่างน้อย 1 อย่าง · ข้อมูลใช้ภายในเพื่อติดตามเคส ไม่แสดงในไลน์ถ้าไม่เลือก</p></form>',
+    '<button class="btn" data-close>ยกเลิก</button><button class="btn btn-brand" id="csave" form="cform" type="submit">' + IC.check.replace('class="ck" ', '') + 'บันทึก</button>', 'sm');
+  var type = x.type;
+  $$('[data-ct]', m).forEach(function (b) { b.onclick = function () { type = b.getAttribute('data-ct'); $$('[data-ct]', m).forEach(function (y) { y.setAttribute('aria-pressed', y === b); }); $('.destlbl', m).textContent = type === 'admit' ? 'Ward' : 'ส่งต่อหน่วยงาน'; }; });
+  setTimeout(function () { var f = $('#c_name', m); if (f) f.focus(); }, 60);
+  $('#cform', m).onsubmit = function (e) {
+    e.preventDefault();
+    var p = { date: DAY.data.date, type: type, name: $('#c_name', m).value, hn: $('#c_hn', m).value, age: $('#c_age', m).value, dx: $('#c_dx', m).value, dest: $('#c_dest', m).value, note: $('#c_note', m).value };
+    if (!p.name.trim() && !p.hn.trim()) return toast('กรุณาใส่ชื่อ-สกุล หรือ HN', true);
+    if (!isNew) p.id = x.id;
+    store('caseLastType', type);
+    saveCaseReq(p, $('#csave', m)).then(function () { m.close(); toast(isNew ? 'เพิ่มแล้ว' : 'บันทึกแล้ว'); });
+  };
+}
+function MP_dirty(date) { if (typeof AN !== 'undefined' && AN.months) { delete AN.months[date.slice(0, 7)]; } }
+
 /* ---------- ข้อความไลน์ / ภาพ / พิมพ์ ---------- */
 function staffNames(posIds, withClinic) {
   return staffList().filter(function (x) { return posIds.indexOf(x.pos) >= 0; }).map(function (x) { return String(x.name).replace(/\s*\(ตัวอย่าง\)$/, '').split(' ')[0] + (withClinic && x.clinic ? ' (' + x.clinic + ')' : ''); }).join(', ');
 }
-function lineText(withStaff) {
+/** opt: {staff: bool, cases: bool (ชื่อ/HN ผู้ป่วย)} */
+function lineText(opt) {
+  opt = typeof opt === 'object' && opt ? opt : { staff: !!opt, cases: false };
   var d = DAY.data, rows = dayRows().filter(function (r) { return isShown(r[0]); }), total = dayTotal(), byC = {};
   rows.forEach(function (r) { byC[r[0]] = (byC[r[0]] || 0) + r[2]; });
   var p = curProcs(), items = activeItems().filter(function (i) { return p[i.id]; });
@@ -323,73 +410,145 @@ function lineText(withStaff) {
   t += Object.keys(byC).sort(function (a, b) { return byC[b] - byC[a]; }).map(function (c) { return c + ' ' + byC[c]; }).join(' · ') + '\n\n';
   t += '💉 หัตถการ ' + fmt(procSum(p), 0) + ' ครั้ง\n' + (items.length ? items.map(function (i) { return i.name + ' ' + p[i.id]; }).join(' · ') : (curField('noProc') ? 'ไม่มีหัตถการ' : '(ยังไม่คีย์)')) + '\n\n';
   t += 'Consult ' + (curField('consult') || 0) + ' · Night OPD ชั้น 4 ' + (curField('nightOpd') || 0) + ' · Admit ' + (curField('admit') || 0);
+  var cs = dayCases();
+  if (cs.length) {
+    t += '\n🚑 ผู้ป่วยส่งต่อ ' + cs.length + ' ราย';
+    if (opt.cases) cs.forEach(function (x) { t += '\n• ' + caseLine(x, true); });
+    else t += ' (' + cs.map(function (x) { return caseLine(x, false); }).join(' · ') + ')';
+  }
   if (curField('other')) t += '\nอื่นๆ: ' + curField('other');
   if (curField('note')) t += '\n📝 ' + curField('note');
-  if (withStaff && staffList().length) {
+  if (opt.staff && staffList().length) {
     t += '\n\n👩‍⚕️ เจ้าหน้าที่';
     shownPositions().forEach(function (ps) { var n = staffNames([ps.id], ps.clinicBox); if (n) t += '\n' + ps.short + ': ' + n; });
   }
   return t;
 }
-function openLine() {
-  var withStaff = store('lineStaff'); if (withStaff === null) withStaff = true;
-  var m = modal('ข้อความส่งไลน์', '<pre class="linetxt" id="ltxt">' + esc(lineText(withStaff)) + '</pre><label class="row small" style="margin-top:12px" for="lst"><input type="checkbox" id="lst"' + (withStaff ? ' checked' : '') + '> แนบรายชื่อเจ้าหน้าที่</label>',
-    '<span class="small muted" style="margin-right:auto">คัดลอกแล้ววางในกลุ่มไลน์</span><button class="btn btn-brand" id="lcopy">' + IC.copy + 'คัดลอกข้อความ</button>');
-  $('#lst', m).onchange = function (e) { withStaff = e.target.checked; store('lineStaff', withStaff); $('#ltxt', m).textContent = lineText(withStaff); };
-  $('#lcopy', m).onclick = function () { copyText(lineText(withStaff), $('#ltxt', m)); };
+function outOpts(kind) { var o = store('out:' + kind) || {}; return { staff: o.staff !== undefined ? o.staff : true, cases: o.cases !== undefined ? o.cases : kind === 'print' }; }
+function optChecks(o, cs) {
+  return '<div class="optrow"><label class="row small" for="o_staff"><input type="checkbox" id="o_staff"' + (o.staff ? ' checked' : '') + '> รายชื่อเจ้าหน้าที่</label>' +
+    (cs ? '<label class="row small" for="o_cases"><input type="checkbox" id="o_cases"' + (o.cases ? ' checked' : '') + '> ข้อมูลผู้ป่วยส่งต่อ (ชื่อ/HN)</label>' : '') + '</div>';
 }
-function paperHtml() {
+function bindOpts(m, kind, o, redraw) {
+  ['staff', 'cases'].forEach(function (k) { var c = $('#o_' + k, m); if (c) c.onchange = function () { o[k] = c.checked; store('out:' + kind, o); redraw(); }; });
+}
+function openLine() {
+  var o = outOpts('line');
+  var m = modal('ข้อความส่งไลน์', optChecks(o, dayCases().length) + '<pre class="linetxt" id="ltxt">' + esc(lineText(o)) + '</pre>',
+    '<span class="small muted grow">คัดลอกแล้ววางในกลุ่มไลน์</span><button class="btn btn-brand" id="lcopy">' + IC.copy + 'คัดลอกข้อความ</button>', 'sheet');
+  bindOpts(m, 'line', o, function () { $('#ltxt', m).textContent = lineText(o); });
+  $('#lcopy', m).onclick = function () { copyText(lineText(o), $('#ltxt', m)); };
+}
+function paperHtml(opt) {
+  opt = opt || { staff: true, cases: true };
   var d = DAY.data, rows = dayRows().filter(function (r) { return isShown(r[0]); }).sort(function (a, b) { return a[0].localeCompare(b[0]) || b[2] - a[2]; });
   var p = curProcs(), c1 = activeItems().filter(function (i) { return i.col === 1; }), c2 = activeItems().filter(function (i) { return i.col === 2; });
   var n = Math.max(17, rows.length, c1.length, c2.length), dt = pd(d.date), body = '';
   for (var i = 0; i < n; i++) {
     var r = rows[i], a = c1[i], b = c2[i];
-    body += '<tr><td style="text-align:center;width:28px">' + (i + 1) + '</td><td>' + (r ? esc(r[1]) : '') + '</td><td style="width:62px">' + (r ? esc(r[0]) : '') + '</td><td class="n" style="width:46px">' + (r ? r[2] : '') + '</td><td>' + (a ? esc(a.name) : '') + '</td><td class="n" style="width:44px">' + (a && p[a.id] ? p[a.id] : '') + '</td><td>' + (b ? esc(b.name) : '') + '</td><td class="n" style="width:44px">' + (b && p[b.id] ? p[b.id] : '') + '</td></tr>';
+    body += '<tr><td style="text-align:center;width:26px">' + (i + 1) + '</td><td>' + (r ? esc(r[1]) : '') + '</td><td style="width:60px">' + (r ? esc(r[0]) : '') + '</td><td class="n" style="width:44px">' + (r ? r[2] : '') + '</td><td>' + (a ? esc(a.name) : '') + '</td><td class="n" style="width:42px">' + (a && p[a.id] ? p[a.id] : '') + '</td><td>' + (b ? esc(b.name) : '') + '</td><td class="n" style="width:42px">' + (b && p[b.id] ? p[b.id] : '') + '</td></tr>';
   }
-  var staffLine = function (ps) { var n = staffList().filter(function (x) { return x.pos === ps.id; }).map(function (x) { return esc(String(x.name).replace(/\s*\(ตัวอย่าง\)$/, '')) + (x.clinic ? ' <span style="color:#666">(' + esc(x.clinic) + ')</span>' : ''); }).join(' · '); return '<div><b style="color:#111">' + esc(ps.short) + ':</b> ' + (n || '-') + '</div>'; };
+  var cs = dayCases(), caseTbl = '';
+  if (cs.length && opt.cases) caseTbl = '<table class="ptbl2"><thead><tr><th style="width:62px">ประเภท</th><th>ชื่อ-สกุล</th><th style="width:70px">HN</th><th style="width:34px">อายุ</th><th>DX</th><th style="width:90px">Ward/หน่วยงาน</th><th>หมายเหตุ</th></tr></thead><tbody>' +
+    cs.map(function (x) { return '<tr><td>' + esc(CASE_SHORT[x.type]) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.hn) + '</td><td style="text-align:center">' + esc(x.age) + '</td><td>' + esc(x.dx) + '</td><td>' + esc(x.dest) + '</td><td>' + esc(x.note) + '</td></tr>'; }).join('') + '</tbody></table>';
+  else if (cs.length) caseTbl = '<div class="foot"><div>ผู้ป่วยส่งต่อ ' + cs.length + ' ราย: ' + esc(cs.map(function (x) { return caseLine(x, false); }).join(' · ')) + '</div></div>';
+  var staffLine = function (ps) { var n = staffList().filter(function (x) { return x.pos === ps.id; }).map(function (x) { return esc(String(x.name).replace(/\s*\(ตัวอย่าง\)$/, '')) + (x.clinic ? ' <span style="color:#777">(' + esc(x.clinic) + ')</span>' : ''); }).join(' · '); return '<div><b>' + esc(ps.short) + ':</b> ' + (n || '-') + '</div>'; };
   return '<div class="paper"><h4>' + esc(S.boot.texts.reportTitle || 'แบบบันทึกรายงานประจำวัน') + '</h4><div class="dl">วัน' + TH_D[dt.getDay()] + ' ที่ ' + dt.getDate() + ' เดือน ' + TH_MF[dt.getMonth()] + ' พ.ศ. ' + (dt.getFullYear() + 543) + (d.holiday ? ' (' + esc(d.holiday) + ')' : '') + '</div>' +
     '<table><thead><tr><th>NO</th><th>แพทย์</th><th>คลินิก</th><th>จำนวน PT</th><th>หัตถการ</th><th>จำนวน</th><th>หัตถการ</th><th>จำนวน</th></tr></thead><tbody>' + body + '</tbody></table>' +
     '<div class="foot"><div>จำนวนผู้ป่วยทั้งหมด <b>' + fmt(dayTotal(), 0) + '</b> ราย &nbsp; โอนตรวจต่อ Night OPD ชั้น 4 <b>' + (curField('nightOpd') || 0) + '</b> ราย &nbsp; Consult แผนกอื่น <b>' + (curField('consult') || 0) + '</b> &nbsp; Admit <b>' + (curField('admit') || 0) + '</b> &nbsp; หัตถการรวม <b>' + fmt(procSum(p), 0) + '</b></div>' +
-    '<div>อื่นๆ ' + (esc(curField('other')) || '-') + (curField('note') ? ' &nbsp;·&nbsp; หมายเหตุ: ' + esc(curField('note')) : '') + '</div></div>' +
-    '<div class="foot"><div><b style="color:#111">รายชื่อเจ้าหน้าที่ปฏิบัติงาน</b></div>' + shownPositions().map(staffLine).join('') + '</div>' +
-    '<div style="text-align:right;color:#888;font-size:10px;margin-top:6px">สร้างจาก SMC Daily ' + esc(stampTh(nowStamp())) + ' · ยอดผู้ป่วยจากระบบโรงพยาบาล</div></div>';
+    '<div>อื่นๆ ' + (esc(curField('other')) || '-') + (curField('note') ? ' &nbsp;·&nbsp; หมายเหตุ: ' + esc(curField('note')) : '') + '</div></div>' + caseTbl +
+    (opt.staff ? '<div class="foot staffbox"><div class="sh">รายชื่อเจ้าหน้าที่ปฏิบัติงาน</div>' + shownPositions().map(staffLine).join('') + '</div>' : '') +
+    '<div class="pfoot">' + ORG.system + ' · SMC Daily · ' + esc(stampTh(nowStamp())) + ' · ยอดผู้ป่วยจากระบบสารสนเทศโรงพยาบาล</div></div>';
 }
 function nowStamp() { var n = new Date(); return ds(n) + ' ' + ('0' + n.getHours()).slice(-2) + ':' + ('0' + n.getMinutes()).slice(-2); }
-function cardHtml() {
+function cardHtml(opt) {
+  opt = opt || {};
   var d = DAY.data, rows = dayRows().filter(function (r) { return isShown(r[0]); }), byC = {};
   rows.forEach(function (r) { byC[r[0]] = (byC[r[0]] || 0) + r[2]; });
   var top = Object.keys(byC).sort(function (a, b) { return byC[b] - byC[a]; }), mx = top.length ? byC[top[0]] : 1, p = curProcs();
-  var its = activeItems().filter(function (i) { return p[i.id]; }).sort(function (a, b) { return p[b.id] - p[a.id]; });
+  var its = activeItems().filter(function (i) { return p[i.id]; }).sort(function (a, b) { return p[b.id] - p[a.id]; }), cs = dayCases();
   return '<div class="mcard"><div class="hd"><svg viewBox="0 0 400 46" preserveAspectRatio="none"><path d="M0,30 L120,30 L132,20 L144,30 L160,30 L170,4 L182,44 L194,30 L400,30" fill="none" stroke="#fff" stroke-width="2"/></svg><small>' + esc(S.boot.texts.lineHeader || '') + '</small><div class="dt">' + esc(thDate(d.date, true, true)) + '</div>' +
     '<div class="big">' + fmt(dayTotal(), 0) + ' <span style="font-size:17px;font-weight:500">ราย</span></div><small>' + top.length + ' คลินิก · แพทย์ ' + new Set(rows.map(function (r) { return r[1]; })).size + ' ท่าน · หัตถการ ' + fmt(procSum(p), 0) + ' ครั้ง</small></div>' +
     '<div class="sec"><h5>ผู้ป่วยแยกคลินิก</h5><div class="bars">' + top.map(function (c) { return '<span>' + esc(c) + '</span><i style="width:' + (byC[c] / mx * 100).toFixed(0) + '%"></i><b style="text-align:right">' + byC[c] + '</b>'; }).join('') + '</div></div>' +
     '<div class="sec"><h5>หัตถการ</h5><div class="kv">' + (its.map(function (i) { return '<span>' + esc(i.name) + '</span><b>' + p[i.id] + '</b>'; }).join('') || '<span>' + (curField('noProc') ? 'ไม่มีหัตถการ' : 'ยังไม่คีย์') + '</span><b></b>') + '</div></div>' +
-    '<div class="sec"><div class="kv"><span>Consult แผนกอื่น</span><b>' + (curField('consult') || 0) + '</b><span>โอน Night OPD ชั้น 4</span><b>' + (curField('nightOpd') || 0) + '</b><span>Admit</span><b>' + (curField('admit') || 0) + '</b></div>' + (curField('note') ? '<p style="font-size:12px;margin:8px 0 0">หมายเหตุ: ' + esc(curField('note')) + '</p>' : '') + '</div>' +
-    '<div class="ft"><span>SMC Daily</span><span>' + esc(stampTh(nowStamp())) + '</span></div></div>';
+    '<div class="sec"><div class="kv"><span>Consult แผนกอื่น</span><b>' + (curField('consult') || 0) + '</b><span>โอน Night OPD ชั้น 4</span><b>' + (curField('nightOpd') || 0) + '</b><span>Admit</span><b>' + (curField('admit') || 0) + '</b></div>' +
+    (cs.length ? '<div class="cs">' + cs.map(function (x) { return '<div>• ' + esc(caseLine(x, !!opt.cases)) + '</div>'; }).join('') + '</div>' : '') +
+    (curField('note') ? '<p style="font-size:12px;margin:8px 0 0">หมายเหตุ: ' + esc(curField('note')) + '</p>' : '') + '</div>' +
+    (opt.staff && staffList().length ? '<div class="sec st"><h5>เจ้าหน้าที่</h5>' + shownPositions().map(function (ps) { var n = staffNames([ps.id], ps.clinicBox); return n ? '<div><b>' + esc(ps.short) + '</b> ' + esc(n) + '</div>' : ''; }).join('') + '</div>' : '') +
+    '<div class="ft"><span>SMC Daily · ' + ORG.abbr + '</span><span>' + esc(stampTh(nowStamp())) + '</span></div></div>';
 }
+/** วาดภาพนอกจอที่ขนาดจริง (ไม่ขึ้นกับการย่อพรีวิว) → canvas */
+function renderOffscreen(html, bg) {
+  return loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js').then(function () {
+    var host = document.createElement('div'); host.className = 'offscreen'; host.innerHTML = html; document.body.appendChild(host);
+    var el = host.firstElementChild;
+    return (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function () {
+      return window.html2canvas(el, { scale: 2, backgroundColor: bg, useCORS: true, logging: false });
+    }).then(function (cv) { host.remove(); return cv; }, function (e) { host.remove(); throw e; });
+  });
+}
+function fitPreview(box) {
+  var el = box.firstElementChild; if (!el) return;
+  el.style.transform = ''; box.style.height = '';
+  var w = el.offsetWidth, avail = box.clientWidth - 24;
+  if (w > avail && avail > 0) { var k = avail / w; el.style.transformOrigin = 'top left'; el.style.transform = 'scale(' + k + ')'; box.style.height = (el.offsetHeight * k + 24) + 'px'; el.style.marginLeft = '0'; }
+  else el.style.marginLeft = '';
+}
+var IS_TOUCH = window.matchMedia && matchMedia('(pointer: coarse)').matches;
 function openImage() {
-  var mode = store('imgMode') || 'card';
-  var m = modal('ภาพรายงาน', '<div class="seg" role="group" aria-label="แบบภาพ" style="margin-bottom:14px"><button data-im="card" aria-pressed="' + (mode === 'card') + '">แบบสรุปมือถือ</button><button data-im="form" aria-pressed="' + (mode === 'form') + '">แบบฟอร์มเต็ม</button></div><div class="paperwrap" id="imgbox"></div>',
-    '<span class="small muted" style="margin-right:auto" id="imgnote">บันทึกเป็นไฟล์ PNG หรือคัดลอกภาพไปวางในไลน์</span><button class="btn" id="imgcopy">' + IC.copy + 'คัดลอกภาพ</button><button class="btn btn-brand" id="imgsave">' + IC.img + 'บันทึกภาพ</button>');
-  var draw = function () { $('#imgbox', m).innerHTML = mode === 'form' ? paperHtml() : cardHtml(); };
+  var mode = store('imgMode') || 'card', o = outOpts('image'), blob = null, gen = 0;
+  var m = modal('ภาพรายงาน', '<div class="row" style="justify-content:space-between;margin-bottom:10px"><div class="seg" role="group" aria-label="แบบภาพ"><button data-im="card" aria-pressed="' + (mode === 'card') + '">แบบสรุปมือถือ</button><button data-im="form" aria-pressed="' + (mode === 'form') + '">แบบฟอร์มเต็ม</button></div></div>' +
+    optChecks(o, dayCases().length) + '<div class="paperwrap" id="imgbox"></div>',
+    '<span class="small muted grow" id="imgnote">กำลังเตรียมภาพ…</span>' +
+    '<button class="btn" id="imgcopy" disabled>' + IC.copy + 'คัดลอกภาพ</button>' +
+    '<button class="btn btn-brand" id="imgsave" disabled>' + (IS_TOUCH && navigator.canShare ? IC.share + 'แชร์ / บันทึกภาพ' : IC.img + 'บันทึกภาพ') + '</button>', 'sheet');
+  var box = $('#imgbox', m), note = $('#imgnote', m), bc = $('#imgcopy', m), bs = $('#imgsave', m);
+  var fname = function () { return 'รายงานประจำวัน_' + DAY.data.date + (mode === 'form' ? '_แบบฟอร์ม' : '') + '.png'; };
+  var draw = function () {
+    var html = mode === 'form' ? paperHtml(o) : cardHtml(o), my = ++gen;
+    box.innerHTML = html; requestAnimationFrame(function () { fitPreview(box); });
+    blob = null; bc.disabled = bs.disabled = true; note.textContent = 'กำลังเตรียมภาพ…';
+    renderOffscreen(html, mode === 'form' ? '#ffffff' : null).then(function (cv) {
+      cv.toBlob(function (b) { if (my !== gen) return; blob = b; bc.disabled = bs.disabled = !b; note.textContent = b ? 'พร้อมแล้ว · คัดลอกไปวางในไลน์ หรือบันทึกเป็นรูป' : 'สร้างภาพไม่สำเร็จ'; }, 'image/png');
+    }).catch(function (e) { if (my === gen) note.textContent = e.message || 'สร้างภาพไม่สำเร็จ'; });
+  };
   draw();
+  var onR = debounce(function () { if (box.isConnected) fitPreview(box); else removeEventListener('resize', onR); }, 150); addEventListener('resize', onR);
   $$('[data-im]', m).forEach(function (b) { b.onclick = function () { mode = b.getAttribute('data-im'); store('imgMode', mode); $$('[data-im]', m).forEach(function (x) { x.setAttribute('aria-pressed', x === b); }); draw(); }; });
-  var render = function () {
-    return loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js').then(function () {
-      var el = $('#imgbox', m).firstElementChild; return window.html2canvas(el, { scale: 2, backgroundColor: mode === 'form' ? '#ffffff' : null, useCORS: true });
-    });
+  bindOpts(m, 'image', o, draw);
+  bs.onclick = function () {
+    if (!blob) return;
+    var file = window.File ? new File([blob], fname(), { type: 'image/png' }) : null;
+    if (IS_TOUCH && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      navigator.share({ files: [file], title: 'รายงานประจำวัน' }).catch(function (e) { if (e && e.name !== 'AbortError') toast('แชร์ไม่สำเร็จ: ' + e.message, true); });
+      return;
+    }
+    var url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = fname(); document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000); toast('บันทึกภาพแล้ว');
   };
-  var fname = 'รายงานประจำวัน_' + DAY.data.date + (mode === 'form' ? '_แบบฟอร์ม' : '') + '.png';
-  $('#imgsave', m).onclick = function () {
-    busy($('#imgsave', m), render()).then(function (cv) { var a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = fname; document.body.appendChild(a); a.click(); a.remove(); toast('บันทึกภาพแล้ว'); })
-      .catch(function (e) { toast(e.message || 'สร้างภาพไม่สำเร็จ', true); });
-  };
-  $('#imgcopy', m).onclick = function () {
-    busy($('#imgcopy', m), render()).then(function (cv) { return new Promise(function (res, rej) { cv.toBlob(function (b) { if (!b || !window.ClipboardItem || !navigator.clipboard) return rej(new Error('เบราว์เซอร์นี้คัดลอกภาพไม่ได้ ใช้ปุ่มบันทึกภาพแทน')); navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]).then(res, rej); }); }); })
-      .then(function () { toast('คัดลอกภาพแล้ว วางในไลน์ได้เลย (Ctrl+V)'); }).catch(function (e) { toast(e.message || 'คัดลอกภาพไม่สำเร็จ', true); });
+  bc.onclick = function () {
+    if (!blob) return;
+    if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) return toast('เบราว์เซอร์นี้คัดลอกภาพไม่ได้ ใช้ปุ่มบันทึก/แชร์ภาพแทน', true);
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]).then(function () { toast('คัดลอกภาพแล้ว วางในไลน์ได้เลย'); }, function () { toast('คัดลอกภาพไม่สำเร็จ ใช้ปุ่มบันทึก/แชร์ภาพแทน', true); });
   };
 }
-function printDay() { var pa = $('#printArea'); pa.innerHTML = paperHtml(); setTimeout(function () { window.print(); }, 60); }
+/** พิมพ์ A4: เลือกได้ว่าจะพิมพ์รายชื่อเจ้าหน้าที่/ข้อมูลผู้ป่วยส่งต่อ · ย่อให้จบในหน้าเดียวเสมอ */
+function printDay() {
+  var o = outOpts('print');
+  var m = modal('พิมพ์ A4', optChecks(o, dayCases().length) + '<div class="paperwrap" id="prbox"></div>',
+    '<span class="small muted grow">ย่อให้พอดีกระดาษ A4 หนึ่งแผ่นอัตโนมัติ</span><button class="btn btn-brand" id="prgo">' + IC.print + 'พิมพ์</button>', 'sheet');
+  var box = $('#prbox', m), draw = function () { box.innerHTML = paperHtml(o); requestAnimationFrame(function () { fitPreview(box); }); };
+  draw(); bindOpts(m, 'print', o, draw);
+  $('#prgo', m).onclick = function () { m.close(); printHtml(paperHtml(o)); };
+}
+function printHtml(html) {
+  var pa = $('#printArea'); pa.innerHTML = html;
+  var el = pa.firstElementChild; pa.classList.add('measure');
+  var h = el.offsetHeight, maxH = 1045;   // A4 ลบขอบ 10 มม. ที่ความกว้างกระดาษ ~718px
+  pa.classList.remove('measure');
+  el.style.zoom = h > maxH ? (maxH / h).toFixed(3) : '';
+  setTimeout(function () { window.print(); }, 80);
+}
 
 /* =====================================================================
    ปฏิทินย้อนหลัง
@@ -401,8 +560,9 @@ function pageCal() {
   var ym = CALS.ym, months = monthsAvail(), i = months.indexOf(ym);
   if (i < 0) { months.unshift(ym); i = 0; }
   $('#main').innerHTML = banners() + '<div class="pagehead rise"><div><div class="eyebrow">ปฏิทินย้อนหลัง</div><h1>' + esc(thMonth(ym)) + '</h1></div>' +
-    '<div class="row"><button class="iconbtn" id="cprev" aria-label="เดือนก่อน"' + (i >= months.length - 1 ? ' disabled' : '') + '>' + IC.prev + '</button><select id="cym" aria-label="เลือกเดือน">' + months.map(function (k) { return '<option value="' + k + '"' + (k === ym ? ' selected' : '') + '>' + thMonth(k) + '</option>'; }).join('') + '</select><button class="iconbtn" id="cnext" aria-label="เดือนถัดไป"' + (i <= 0 ? ' disabled' : '') + '>' + IC.next + '</button></div></div>' +
+    '<div class="row">' + helpBtn() + '<button class="iconbtn" id="cprev" aria-label="เดือนก่อน"' + (i >= months.length - 1 ? ' disabled' : '') + '>' + IC.prev + '</button><select id="cym" aria-label="เลือกเดือน">' + months.map(function (k) { return '<option value="' + k + '"' + (k === ym ? ' selected' : '') + '>' + thMonth(k) + '</option>'; }).join('') + '</select><button class="iconbtn" id="cnext" aria-label="เดือนถัดไป"' + (i <= 0 ? ' disabled' : '') + '>' + IC.next + '</button></div></div>' +
     '<div id="calBody"><div class="card skel" style="height:520px"></div></div>';
+  bindHelp($('#main'));
   $('#cprev').onclick = function () { CALS.ym = months[i + 1]; pageCal(); };
   $('#cnext').onclick = function () { CALS.ym = months[i - 1]; pageCal(); };
   $('#cym').onchange = function (e) { CALS.ym = e.target.value; pageCal(); };
@@ -412,6 +572,7 @@ function drawCal(d) {
   var box = $('#calBody'); if (!box) return;
   var first = pd(d.ym + '-01').getDay(), cnt = { done: 0, missing: 0, closed: 0, nodata: 0 }, mx = 1, sum = 0, open = 0, cells = '';
   d.days.forEach(function (x) { if (x.total) { mx = Math.max(mx, x.total); sum += x.total; open++; } if (cnt[x.status] !== undefined) cnt[x.status]++; });
+  var bins = heatBins(d.days.map(function (x) { return x.total || 0; }));
   for (var k = 0; k < first; k++) cells += '<div class="c out" aria-hidden="true"></div>';
   d.days.forEach(function (x, i) {
     var dn = +x.date.slice(8), st = x.status;
@@ -419,15 +580,15 @@ function drawCal(d) {
     var dot = { done: 'var(--ok)', missing: 'var(--warn)', open: 'var(--brand)' }[st] || 'transparent';
     cells += '<button class="c ' + x.type + (x.date === S.boot.today ? ' today' : '') + '" data-day="' + x.date + '"' + (st === 'future' ? ' disabled' : '') + ' style="animation-delay:' + (i * .012).toFixed(3) + 's" aria-label="' + esc(thDate(x.date, true)) + ' ' + (x.total || 0) + ' ราย">' +
       '<span class="dn"><span>' + dn + '</span><span class="dotst" style="background:' + dot + '"></span></span><span class="vn">' + (x.total ? fmt(x.total, 0) : '') + '</span>' + (x.holiday ? '<span class="hn">' + esc(x.holiday) + '</span>' : '') + '<span class="st">' + chip + '</span>' +
-      (x.total ? '<span class="heat" style="background:' + heatColor(x.total, mx) + '"></span>' : '') + '</button>';
+      (x.total ? '<span class="heat" style="background:' + heatColor(x.total, mx, bins) + '"></span>' : '') + '</button>';
   });
   box.innerHTML = '<div class="stats rise d1" style="margin-bottom:16px">' +
     '<div class="stat"><span class="lb">' + IC.users + 'ผู้ป่วยทั้งเดือน</span><span class="v"><span data-count="' + sum + '">0</span><small>ราย</small></span><span class="d muted">เปิดคลินิก ' + open + ' วัน</span></div>' +
     '<div class="stat"><span class="lb">' + IC.check.replace('class="ck" ', '') + 'คีย์หัตถการครบ</span><span class="v"><span data-count="' + cnt.done + '">0</span><small>วัน</small></span><span class="d muted">จากวันที่เปิด ' + open + ' วัน</span></div>' +
     '<div class="stat"><span class="lb">' + IC.warn + 'ยังไม่คีย์</span><span class="v" style="color:' + (cnt.missing ? 'var(--warn)' : 'inherit') + '"><span data-count="' + cnt.missing + '">0</span><small>วัน</small></span><span class="d muted">กดวันที่เพื่อคีย์ย้อนหลัง</span></div></div>' +
     '<div class="card rise d2" style="padding:14px"><div class="cal">' + TH_DS.map(function (x) { return '<div class="dow">' + x + '</div>'; }).join('') + cells + '</div>' +
-    '<div class="legend" style="margin-top:12px"><span><i style="background:var(--ok)"></i>คีย์ครบ</span><span><i style="background:var(--warn)"></i>ยังไม่คีย์</span><span><i style="background:var(--off)"></i>เสาร์–อาทิตย์</span><span><i style="background:var(--hol)"></i>วันหยุดนักขัตฤกษ์</span>' +
-    '<span style="margin-left:auto" class="heatlegend">น้อย ' + [1, 2, 3, 4, 5].map(function (k) { return '<i style="background:var(--heat-' + k + ')"></i>'; }).join('') + ' มาก</span></div></div>';
+    '<div class="legend" style="margin-top:12px"><span><i style="background:var(--ok)"></i>คีย์ครบ</span><span><i style="background:var(--warn)"></i>ยังไม่คีย์</span><span><i style="background:var(--d-s)"></i>เสาร์–อาทิตย์</span><span><i style="background:var(--d-h)"></i>วันหยุดนักขัตฤกษ์</span></div>' +
+    '<div style="margin-top:8px"><span class="xs muted">แถบสีล่างช่อง = ความหนาแน่นผู้ป่วย</span>' + heatLegend(bins) + '</div></div>';
   countUp(box);
   $$('[data-day]', box).forEach(function (b) { b.onclick = function () { S.date = b.getAttribute('data-day'); go('today'); }; });
 }

@@ -3,6 +3,13 @@
    ===================================================================== */
 'use strict';
 var IS_DEMO = (typeof API_URL !== 'undefined' && API_URL === 'demo');
+/** ข้อมูลหน่วยงาน (แสดงหน้าเข้าสู่ระบบ + ท้ายทุกหน้า) */
+var ORG = {
+  system: 'ระบบรายงานผลการปฏิบัติงานประจำวัน', clinic: 'คลินิกพิเศษเฉพาะทางนอกเวลา', hosp: 'โรงพยาบาลสมเด็จพระบรมราชเทวี ณ ศรีราชา', trc: 'สภากาชาดไทย',
+  en: 'Special Medical Clinic – Queen Savang Vadhana Memorial Hospital, Thai Red Cross Society', abbr: 'SMC-QSMH',
+  contact: 'เจ้าหน้าที่ประสานงาน โทรภายใน 13507', updated: '9 ต.ค. 2569', year: '2569',
+  manual: 'https://claude.ai/artifact/TpQsQi6zm1uj5VboEyNn4V'
+};
 
 /* ---------------- ตัวช่วย ---------------- */
 var $ = function (s, el) { return (el || document).querySelector(s); };
@@ -62,6 +69,13 @@ var IC = {
   warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>',
   eye: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
   eyeOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3.2 3.9M6.6 7.5C3.8 9.3 2 12 2 12s3.6 6 10 6c1.6 0 3-.4 4.3-1M9.9 10a3 3 0 0 0 4.2 4.1"/></svg>',
+  help: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.4 9.3a2.7 2.7 0 0 1 5.2 1c0 1.8-2.6 2.2-2.6 3.9M12 17.2v.3"/></svg>',
+  share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>',
+  filter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8.5V20l-4-2v-4.5z"/></svg>',
+  ambul: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16V7h11v9M14 10h4l3 3.5V16h-7"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M8.5 9v4M6.5 11h4"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.4"/></svg>',
   inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg>'
 };
 
@@ -72,7 +86,7 @@ var S = { token: null, me: null, boot: null, page: 'today', date: null };
 var NET = { active: 0, queue: [], MAX: 4, busy: 0 };
 function netSlot() { return new Promise(function (res) { if (NET.active < NET.MAX) { NET.active++; res(); } else NET.queue.push(res); }); }
 function netDone() { var n = NET.queue.shift(); if (n) n(); else NET.active = Math.max(0, NET.active - 1); }
-var ACT_TH = { login: 'กำลังเข้าสู่ระบบ', bootstrap: 'กำลังโหลดข้อมูลตั้งต้น', getDay: 'กำลังโหลดรายงาน', refreshDay: 'กำลังดึงยอดล่าสุดจากระบบ รพ.', getRoster: 'กำลังดึงตารางเวรจาก SMC Duty', saveEntry: 'กำลังบันทึก', saveStaff: 'กำลังบันทึกรายชื่อ', addItem: 'กำลังเพิ่มรายการ',
+var ACT_TH = { getMonths: 'กำลังโหลดข้อมูลรายงาน', getCases: 'กำลังโหลดรายชื่อผู้ป่วยส่งต่อ', saveCase: 'กำลังบันทึกผู้ป่วยส่งต่อ', saveGroups: 'กำลังบันทึกกลุ่มคลินิก', login: 'กำลังเข้าสู่ระบบ', bootstrap: 'กำลังโหลดข้อมูลตั้งต้น', getDay: 'กำลังโหลดรายงาน', refreshDay: 'กำลังดึงยอดล่าสุดจากระบบ รพ.', getRoster: 'กำลังดึงตารางเวรจาก SMC Duty', saveEntry: 'กำลังบันทึก', saveStaff: 'กำลังบันทึกรายชื่อ', addItem: 'กำลังเพิ่มรายการ',
   getMonth: 'กำลังโหลดปฏิทิน', getReport: 'กำลังสรุปรายงาน', getDashboard: 'กำลังสรุปแดชบอร์ด', getAdmin: 'กำลังโหลดการตั้งค่า', testApi: 'กำลังทดสอบ API', testDuty: 'กำลังทดสอบ SMC Duty', getAudit: 'กำลังโหลดประวัติ' };
 var ACTS = {}, actTimer = null;
 function netBar(d, action) {
@@ -147,11 +161,14 @@ function forget(prefix) { Object.keys(MEMO).forEach(function (k) { if (k.indexOf
 function toast(msg, err) { $$('.toast').forEach(function (t) { t.remove(); }); var t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.setAttribute('role', 'status'); t.textContent = msg; document.body.appendChild(t); setTimeout(function () { t.remove(); }, err ? 4200 : 2400); }
 function modal(title, body, foot, cls) {
   var m = document.createElement('div'); m.className = 'modal'; m.setAttribute('role', 'dialog'); m.setAttribute('aria-modal', 'true');
+  document.documentElement.classList.add('modal-open');
   m.innerHTML = '<div class="box ' + (cls || '') + '"><div class="mh"><h3>' + title + '</h3><button class="iconbtn" data-close aria-label="ปิด">' + IC.x + '</button></div><div class="mb">' + body + '</div>' + (foot ? '<div class="mf">' + foot + '</div>' : '') + '</div>';
-  var close = function () { m.remove(); document.removeEventListener('keydown', key); };
+  var close = function () { m.remove(); document.removeEventListener('keydown', key); if (!$('.modal')) document.documentElement.classList.remove('modal-open'); };
   var key = function (e) { if (e.key === 'Escape') close(); };
   m.addEventListener('click', function (e) { if (e.target === m || e.target.closest('[data-close]')) close(); });
   document.addEventListener('keydown', key);
+  var obs = new MutationObserver(function () { if (!m.isConnected) { obs.disconnect(); if (!$('.modal')) document.documentElement.classList.remove('modal-open'); } });
+  obs.observe(document.body, { childList: true });
   document.body.appendChild(m); m.close = close; return m;
 }
 var tip = (function () { var el; return {
@@ -177,24 +194,64 @@ function copyText(txt, fallbackEl) {
 
 /* ---------------- กราฟ ---------------- */
 function niceStep(max) { var raw = max / 4, p = Math.pow(10, Math.floor(Math.log10(raw || 1))), n = raw / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
-/** แท่ง: data [{label, v, ghost, color, tip}] */
+/** ชุดสีข้อมูล (ตรวจความต่างสีสำหรับผู้ที่มองสีบกพร่องแล้ว) · สีตามตัวตน ไม่เปลี่ยนตามอันดับ */
+var PAL = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)'];
+var PAL_HEX = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+function palOf(hex) { var i = PAL_HEX.indexOf(String(hex || '').toLowerCase()); return i >= 0 ? PAL[i] : (hex || 'var(--c1)'); }
+function shortNum(v) { return v >= 10000 ? (Math.round(v / 100) / 10) + 'k' : fmt(v, 0); }
+/** ตัวเลขบนกราฟ: เปิด/ปิดได้ จำค่าของแต่ละคน */
+function labelsOn() { var v = store('chartLabels'); return v === null ? true : !!v; }
+function labelsToggle(id) { return '<label class="row xs muted switchline" for="' + id + '"><span class="switch sm"><input type="checkbox" id="' + id + '"' + (labelsOn() ? ' checked' : '') + '><span></span></span>ตัวเลขบนกราฟ</label>'; }
+/** แท่ง: data [{label, v, ghost, color, tip, key}] · o.labels = แสดงตัวเลขบนแท่ง */
 function barChart(data, o) {
   o = o || {};
-  var W = o.w || 760, H = o.h || 230, L = 42, B = 26, T = 10, R = 6;
+  var W = o.w || 760, H = o.h || 230, L = 42, B = 26, T = o.labels ? 18 : 10, R = 6;
   var max = Math.max(1, Math.max.apply(null, data.map(function (d) { return Math.max(d.v || 0, d.ghost || 0); })));
-  var step = niceStep(max), top = Math.ceil(max / step) * step, iw = W - L - R, ih = H - T - B, bw = iw / Math.max(1, data.length), gap = Math.min(5, bw * 0.28);
+  var step = niceStep(max), top = Math.ceil(max / step) * step, iw = W - L - R, ih = H - T - B, bw = iw / Math.max(1, data.length), gap = Math.max(2, Math.min(6, bw * 0.26));
   var g = '';
   for (var v = 0; v <= top + 1e-9; v += step) { var y = T + ih - v / top * ih; g += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y + '" y2="' + y + '"/><text x="' + (L - 7) + '" y="' + (y + 4) + '" text-anchor="end">' + fmt(v, 0) + '</text>'; }
   var every = Math.ceil(data.length / (o.maxLabels || 16)), bars = '';
+  var lblFs = bw >= 26 ? 11 : bw >= 17 ? 9.5 : 8.5, showLbl = o.labels && bw >= 11;
   data.forEach(function (d, i) {
     var x = L + i * bw + gap / 2, w = Math.max(1.5, bw - gap), h = (d.v || 0) / top * ih, y = T + ih - h, r = Math.min(4, w / 2, h);
     var path = h > 0 ? 'M' + x + ',' + (T + ih) + 'V' + (y + r) + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y + 'H' + (x + w - r) + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) + 'V' + (T + ih) + 'Z' : '';
     var gh = d.ghost ? '<rect class="ghost" x="' + (x - 1) + '" y="' + (T + ih - d.ghost / top * ih) + '" width="' + (w + 2) + '" height="' + (d.ghost / top * ih) + '" rx="3"/>' : '';
-    bars += '<g data-tip="' + esc(d.tip || '') + '"><rect class="hit" x="' + (L + i * bw) + '" y="' + T + '" width="' + bw + '" height="' + ih + '"/>' + gh +
-      (path ? '<path class="bar" style="animation-delay:' + Math.min(0.6, i * 0.012).toFixed(3) + 's" d="' + path + '" fill="' + (d.color || 'var(--brand)') + '"/>' : '') +
+    var lbl = showLbl && d.v ? (bw < 17 && d.v >= 100 ? '<text class="vl" x="' + (x + w / 2) + '" y="' + (y - 3) + '" text-anchor="start" transform="rotate(-90 ' + (x + w / 2) + ' ' + (y - 3) + ')" style="font-size:' + lblFs + 'px">' + shortNum(d.v) + '</text>' : '<text class="vl" x="' + (x + w / 2) + '" y="' + (y - 4) + '" text-anchor="middle" style="font-size:' + lblFs + 'px">' + shortNum(d.v) + '</text>') : '';
+    bars += '<g data-tip="' + esc(d.tip || '') + '"' + (d.key ? ' data-pick="' + esc(d.key) + '" class="pickable"' : '') + '><rect class="hit" x="' + (L + i * bw) + '" y="' + T + '" width="' + bw + '" height="' + ih + '"/>' + gh +
+      (path ? '<path class="bar" style="animation-delay:' + Math.min(0.6, i * 0.012).toFixed(3) + 's" d="' + path + '" fill="' + (d.color || 'var(--c1)') + '"/>' : '') + lbl +
       (i % every === 0 ? '<text x="' + (L + i * bw + bw / 2) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(d.label) + '</text>' : '') + '</g>';
   });
   return '<div class="chart"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(o.aria || '') + '"><line class="axis" x1="' + L + '" x2="' + (W - R) + '" y1="' + (T + ih) + '" y2="' + (T + ih) + '"/>' + g + bars + '</svg></div>';
+}
+/** โดนัท: list [{name, v, color, key, sub}] · คืน svg + คำอธิบาย */
+function donut(list, o) {
+  o = o || {}; var tot = list.reduce(function (s, x) { return s + x.v; }, 0) || 1, R = 74, r0 = 50, cx = 90, cy = 90, a = -Math.PI / 2, segs = '';
+  var gapA = list.length > 1 ? 0.012 : 0;
+  list.forEach(function (x, i) {
+    var f = x.v / tot, a2 = a + f * Math.PI * 2;
+    if (f > 0) {
+      var s1 = a + gapA, e1 = Math.max(s1 + 0.001, a2 - gapA), big = e1 - s1 > Math.PI ? 1 : 0;
+      if (f >= 0.9999) segs += '<g data-tip="' + esc(x.tip || '') + '"' + (x.key ? ' data-pick="' + esc(x.key) + '" class="pickable"' : '') + '><circle cx="' + cx + '" cy="' + cy + '" r="' + ((R + r0) / 2) + '" fill="none" stroke="' + x.color + '" stroke-width="' + (R - r0) + '"/></g>';
+      else segs += '<g data-tip="' + esc(x.tip || '') + '"' + (x.key ? ' data-pick="' + esc(x.key) + '" class="pickable"' : '') + '><path class="seg" style="animation-delay:' + (i * .05).toFixed(2) + 's" fill="' + x.color + '" d="M' + (cx + R * Math.cos(s1)).toFixed(2) + ',' + (cy + R * Math.sin(s1)).toFixed(2) + 'A' + R + ',' + R + ' 0 ' + big + ' 1 ' + (cx + R * Math.cos(e1)).toFixed(2) + ',' + (cy + R * Math.sin(e1)).toFixed(2) +
+        'L' + (cx + r0 * Math.cos(e1)).toFixed(2) + ',' + (cy + r0 * Math.sin(e1)).toFixed(2) + 'A' + r0 + ',' + r0 + ' 0 ' + big + ' 0 ' + (cx + r0 * Math.cos(s1)).toFixed(2) + ',' + (cy + r0 * Math.sin(s1)).toFixed(2) + 'Z"/></g>';
+    }
+    a = a2;
+  });
+  var leg = list.map(function (x) { return '<li' + (x.key ? ' data-pick="' + esc(x.key) + '" class="pickable"' : '') + '><i style="background:' + x.color + '"></i><span class="nm" title="' + esc(x.title || x.name) + '">' + x.name + '</span><b class="num">' + fmt(x.v, 0) + '</b><span class="pc num">' + fmt(x.v / tot * 100) + '%</span></li>'; }).join('');
+  return '<div class="donut"><svg viewBox="0 0 180 180" role="img" aria-label="' + esc(o.aria || 'สัดส่วน') + '">' + segs + '<text x="90" y="86" text-anchor="middle" class="dt">' + fmt(tot, 0) + '</text><text x="90" y="106" text-anchor="middle" class="ds">' + esc(o.unit || 'ราย') + '</text></svg><ul class="dleg">' + leg + '</ul></div>';
+}
+/** ช่วงสีปฏิทินความหนาแน่น: คำนวณจากข้อมูลจริง (ควอนไทล์ ปัดเป็นเลขกลม) → 5 ระดับ */
+function heatBins(vals) {
+  var v = vals.filter(function (x) { return x > 0; }).sort(function (a, b) { return a - b; });
+  if (!v.length) return [1, 2, 3, 4];
+  var mx = v[v.length - 1], unit = mx >= 400 ? 50 : mx >= 150 ? 10 : mx >= 40 ? 5 : 1, out = [];
+  [0.2, 0.4, 0.6, 0.8].forEach(function (q) { var x = v[Math.min(v.length - 1, Math.floor(q * v.length))]; x = Math.max(unit, Math.round(x / unit) * unit); if (out.length && x <= out[out.length - 1]) x = out[out.length - 1] + unit; out.push(x); });
+  return out;
+}
+function heatLevel(v, bins) { if (v == null) return -1; if (!v) return 0; for (var i = 0; i < bins.length; i++) if (v <= bins[i]) return i + 1; return 5; }
+function heatLegend(bins) {
+  var r = [['1', bins[0]]]; for (var i = 1; i < 4; i++) r.push([bins[i - 1] + 1, bins[i]]); r.push([bins[3] + 1, null]);
+  return '<div class="heatkey"><span><i style="background:var(--heat-0)"></i>0 / ปิด</span>' + r.map(function (x, i) { return '<span><i style="background:var(--heat-' + (i + 1) + ')"></i>' + fmt(+x[0], 0) + (x[1] == null ? ' ขึ้นไป' : '–' + fmt(x[1], 0)) + '</span>'; }).join('') + '<span class="muted">ราย/วัน</span></div>';
 }
 /** เส้นเล็กในบัตรตัวเลข */
 function miniLine(vals, w, h) {
@@ -223,9 +280,9 @@ function ring(pctv, label, sub) {
 function animateRings(root) { requestAnimationFrame(function () { requestAnimationFrame(function () { $$('.ring .fg', root).forEach(function (c) { c.style.strokeDashoffset = c.getAttribute('data-off'); }); }); }); }
 function hbars(list, o) {
   o = o || {}; var max = list.length ? list[0][1] : 0;
-  return list.map(function (x, i) { return '<div class="hbar"><span class="nm" title="' + esc(x[2] || x[0]) + '"><span class="rank">' + (i + 1) + '</span>' + x[0] + '</span><span class="tr"><span class="fl" style="width:' + (max ? x[1] / max * 100 : 0).toFixed(1) + '%;display:block;animation-delay:' + (i * 0.05).toFixed(2) + 's"></span></span><span class="num">' + fmt(x[1], 0) + '</span></div>'; }).join('') || '<div class="empty">' + IC.inbox + 'ยังไม่มีข้อมูล</div>';
+  return list.map(function (x, i) { return '<div class="hbar' + (x[4] ? ' pickable' : '') + '"' + (x[4] ? ' data-pick="' + esc(x[4]) + '"' : '') + '><span class="nm" title="' + esc(x[2] || x[0]) + '"><span class="rank">' + (i + 1) + '</span>' + x[0] + '</span><span class="tr"><span class="fl" style="width:' + (max ? x[1] / max * 100 : 0).toFixed(1) + '%;display:block;animation-delay:' + (i * 0.05).toFixed(2) + 's' + (x[3] ? ';background:' + x[3] : '') + '"></span></span><span class="num">' + fmt(x[1], 0) + '</span></div>'; }).join('') || '<div class="empty">' + IC.inbox + 'ไม่มีข้อมูลตามตัวกรอง</div>';
 }
-function heatColor(v, max) { if (v == null) return 'var(--line-2)'; if (!v) return 'var(--heat-0)'; var k = v / (max || 1); return 'var(--heat-' + (k < .2 ? 1 : k < .4 ? 2 : k < .6 ? 3 : k < .85 ? 4 : 5) + ')'; }
+function heatColor(v, max, bins) { if (v == null) return 'var(--line-2)'; if (!v) return 'var(--heat-0)'; if (bins) return 'var(--heat-' + heatLevel(v, bins) + ')'; var k = v / (max || 1); return 'var(--heat-' + (k < .2 ? 1 : k < .4 ? 2 : k < .6 ? 3 : k < .85 ? 4 : 5) + ')'; }
 
 /* ---------------- ล็อกอิน / โครงหน้า ---------------- */
 var ROLE_TH = { nurse: 'พยาบาล', exec: 'ผู้บริหาร', admin: 'แอดมิน' };
@@ -235,14 +292,14 @@ function logout(expired) {
   renderLogin(expired ? 'หมดเวลาการเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่' : '');
 }
 function renderLogin(msg) {
-  document.title = 'SMC Daily · เข้าสู่ระบบ';
+  document.title = 'SMC Daily · ' + ORG.system;
   var ecg = 'M0,70 L140,70 L160,70 L172,52 L184,70 L206,70 L218,18 L232,118 L246,70 L270,70 L290,60 L312,70 L470,70 L490,70 L502,52 L514,70 L536,70 L548,18 L562,118 L576,70 L600,70 L620,60 L642,70 L800,70';
   $('#app').innerHTML = '<div class="login">' +
-    '<section class="art"><div class="brand" style="padding:0"><div class="mark">' + IC.logo + '</div><div><b style="color:#fff">SMC Daily</b><span style="color:rgba(255,255,255,.75)">คลินิกพิเศษเฉพาะทางนอกเวลา</span></div></div>' +
-    '<div><h1>รายงานประจำวัน<br>ไม่ต้องคัดลอกลงกระดาษ<span>ยอดผู้ป่วยขึ้นเองจากระบบโรงพยาบาล คีย์เฉพาะหัตถการ ส่งไลน์ได้ในคลิกเดียว</span></h1>' +
+    '<section class="art"><div class="brand" style="padding:0"><div class="mark">' + IC.logo + '</div><div><b style="color:#fff">SMC Daily</b><span style="color:rgba(255,255,255,.8)">' + ORG.clinic + ' · ' + ORG.abbr + '</span></div></div>' +
+    '<div><div class="art-org">' + ORG.hosp + ' ' + ORG.trc + '</div><h1>' + ORG.system + '<span>' + ORG.clinic + '</span></h1>' +
     '<svg class="monitor" viewBox="0 0 800 140" preserveAspectRatio="none" aria-hidden="true"><path class="base" d="' + ecg + '"/><path d="' + ecg + '"/></svg></div>' +
-    '<div class="feats"><div class="feat d1"><b>ยอดจาก API</b>อัปเดตทุก 5 นาที</div><div class="feat d2"><b>คีย์ 2 นาที</b>หัตถการ 27 รายการ</div><div class="feat d3"><b>รายงาน · แดชบอร์ด</b>วัน เดือน ไตรมาส ปีงบ</div></div></section>' +
-    '<section class="formside"><form id="lf" autocomplete="on"><div><div class="eyebrow">' + esc(IS_DEMO ? 'โหมดทดลองใช้' : 'โรงพยาบาลสมเด็จพระบรมราชเทวี ณ ศรีราชา') + '</div><h2>เข้าสู่ระบบ</h2></div>' +
+    '<div class="feats"><div class="feat d1"><b>ยอดผู้รับบริการ</b>เชื่อมระบบสารสนเทศโรงพยาบาลอัตโนมัติ</div><div class="feat d2"><b>บันทึกหัตถการ</b>บันทึกทันที ตรวจสอบย้อนหลังได้</div><div class="feat d3"><b>รายงานและแดชบอร์ด</b>รายวัน เดือน ไตรมาส ปีงบประมาณ</div></div></section>' +
+    '<section class="formside"><form id="lf" autocomplete="on"><div><div class="eyebrow">' + esc(IS_DEMO ? 'โหมดทดลองใช้' : ORG.clinic) + '</div><h2>เข้าสู่ระบบ</h2></div>' +
     (msg ? '<div class="banner warn">' + esc(msg) + '</div>' : '') +
     (IS_DEMO ? '<div class="demo"><b>บัญชีทดลอง</b> รหัสผ่าน <b>demo1234</b> ทุกบัญชี<div class="row"><button type="button" class="btn btn-sm" data-u="nurse.smc">พยาบาล</button><button type="button" class="btn btn-sm" data-u="exec">ผู้บริหาร</button><button type="button" class="btn btn-sm" data-u="admin">แอดมิน</button></div></div>' : '') +
     '<label class="field" for="lu">ชื่อผู้ใช้<input id="lu" name="username" type="text" autocomplete="username" autocapitalize="none" required></label>' +
@@ -250,7 +307,8 @@ function renderLogin(msg) {
     '<label class="row small" for="lr"><input id="lr" type="checkbox" checked> จำการเข้าสู่ระบบ 30 วัน (เครื่องเคาน์เตอร์)</label>' +
     '<button class="btn btn-brand btn-lg" id="lb" type="submit" style="justify-content:center">เข้าสู่ระบบ</button>' +
     '<p class="small" id="lhint" hidden style="margin:0;color:var(--warn)">เซิร์ฟเวอร์ Google กำลังเริ่มทำงาน ครั้งแรกของวันอาจใช้ 5–15 วินาที ครั้งต่อไปจะเร็วขึ้น</p>' +
-    '<p class="xs muted" style="margin:0">ลืมรหัสผ่าน ติดต่อแอดมินของระบบ · ' + esc(typeof APP_ORG !== 'undefined' ? APP_ORG : '') + '</p></form></section></div>';
+    '<p class="small muted" style="margin:0">ขอรหัสเข้าใช้งานหรือลืมรหัสผ่าน ติดต่อ' + esc(ORG.contact) + '</p>' +
+    '<a class="small" href="' + esc(ORG.manual) + '" target="_blank" rel="noopener" style="align-self:flex-start">' + IC.help.replace('<svg', '<svg width="15" height="15" style="vertical-align:-3px;margin-right:4px"') + 'คู่มือการใช้งาน</a></form>' + footerHtml(true) + '</section></div>';
   $$('[data-u]').forEach(function (b) { b.onclick = function () { $('#lu').value = b.getAttribute('data-u'); $('#lp').value = 'demo1234'; $('#lb').click(); }; });
   $('#lf').onsubmit = function (e) {
     e.preventDefault();
@@ -298,17 +356,19 @@ function renderShell() {
   var b = S.boot, me = S.me, nav = navList();
   document.title = 'SMC Daily';
   $('#app').innerHTML = '<div class="netbar" id="netbar" hidden><i></i></div><div class="app">' +
-    '<aside class="side"><div class="brand"><div class="mark">' + IC.logo + '</div><div><b>SMC Daily</b><span>รายงานประจำวัน<br>คลินิกพิเศษเฉพาะทางนอกเวลา</span></div></div>' +
+    '<aside class="side"><div class="brand"><div class="mark">' + IC.logo + '</div><div><b>SMC Daily</b><span>' + ORG.system + '<br>' + ORG.clinic + '</span></div></div>' +
     '<nav class="nav" aria-label="เมนูหลัก">' + nav.map(function (n) { return '<button data-go="' + n[0] + '">' + IC[n[2]] + n[1] + '</button>'; }).join('') + '</nav>' +
+    '<button class="sidehelp" data-help>' + IC.help + 'วิธีใช้หน้านี้</button>' +
     '<div class="who"><div class="avatar">' + esc(initials(me.name)) + '</div><div style="min-width:0"><b>' + esc(me.name) + '</b><span class="r">' + ROLE_TH[me.role] + (me.role === 'exec' ? ' · ดูอย่างเดียว' : '') + '</span></div>' +
     '<div class="tools"><button id="bpw" title="เปลี่ยนรหัสผ่าน" aria-label="เปลี่ยนรหัสผ่าน">' + IC.key + '</button><button id="bout" title="ออกจากระบบ" aria-label="ออกจากระบบ">' + IC.logout + '</button></div></div>' +
     '<div class="ver"><span class="livedot"></span>' + esc(b.app.short) + ' ' + esc(b.app.version) + ' · build ' + esc(b.app.build) + '</div></aside>' +
-    '<header class="topbar"><div class="brand" style="padding:0"><div class="mark">' + IC.logo + '</div><b>SMC Daily</b></div><select id="mnav" aria-label="เมนู">' + nav.map(function (n) { return '<option value="' + n[0] + '">' + n[1] + '</option>'; }).join('') + '<option value="__pw">เปลี่ยนรหัสผ่าน</option><option value="__out">ออกจากระบบ</option></select></header>' +
-    '<main class="main" id="main" tabindex="-1"></main></div><div id="printArea"></div>';
+    '<header class="topbar"><div class="brand" style="padding:0"><div class="mark">' + IC.logo + '</div><b>SMC Daily</b></div><div class="row" style="flex-wrap:nowrap"><button class="iconbtn tb-help" data-help aria-label="วิธีใช้หน้านี้">' + IC.help + '</button><select id="mnav" aria-label="เมนู">' + nav.map(function (n) { return '<option value="' + n[0] + '">' + n[1] + '</option>'; }).join('') + '<option value="__pw">เปลี่ยนรหัสผ่าน</option><option value="__out">ออกจากระบบ</option></select></div></header>' +
+    '<div class="content"><main class="main" id="main" tabindex="-1"></main>' + footerHtml() + '</div></div><div id="printArea"></div>';
   $$('[data-go]').forEach(function (bt) { bt.onclick = function () { go(bt.getAttribute('data-go')); }; });
   $('#mnav').onchange = function (e) { var v = e.target.value; if (v === '__pw') { changePassword(); e.target.value = S.page; } else if (v === '__out') logout(); else go(v); };
   $('#bout').onclick = function () { logout(); };
   $('#bpw').onclick = function () { changePassword(); };
+  $$('[data-help]').forEach(function (b) { b.onclick = function () { openHelp(S.page); }; });
 }
 function go(p, first) {
   if (!navList().some(function (n) { return n[0] === p; })) p = 'today';
@@ -331,6 +391,69 @@ function checkVersion() {
     if (v.build && S.boot && v.build !== FRONT_BUILD) S.verWarn = 'มีหน้าเว็บเวอร์ชันใหม่ (' + esc(v.build) + ')';
     else if (S.boot && S.boot.app.build !== FRONT_BUILD) S.verWarn = 'หลังบ้านเป็น build ' + esc(S.boot.app.build) + ' แต่หน้าเว็บเป็น ' + esc(FRONT_BUILD) + ' — แจ้งแอดมินให้อัปเดตให้ตรงกัน';
   }).catch(function () { });
+}
+
+/* ---------------- ท้ายหน้า · วิธีใช้ · ประเภทวัน ---------------- */
+function footerHtml(login) {
+  var b = S.boot, contact = (b && b.texts && b.texts.contact) || ORG.contact;
+  var ver = b ? b.app.version + ' (build ' + b.app.build + ')' : '1.2569' + (typeof FRONT_BUILD !== 'undefined' ? ' (build ' + FRONT_BUILD + ')' : '');
+  var upd = b && b.app.buildTh ? String(b.app.buildTh).replace(/\s*\(.*\)\s*$/, '') : ORG.updated;
+  return '<footer class="appfoot' + (login ? ' onlogin' : '') + '"><div class="f1"><b>' + ORG.system + '</b> · SMC Daily เวอร์ชัน ' + esc(ver) + ' · ปรับปรุงล่าสุด ' + esc(upd) + '</div>' +
+    '<div>พัฒนาระบบโดย ' + ORG.clinic + ' ' + ORG.hosp + ' ' + ORG.trc + '</div><div class="en">' + ORG.en + ' (' + ORG.abbr + ')</div>' +
+    '<div>ติดต่อประสานงาน: ' + esc(contact) + ' · © ' + ORG.year + ' ' + ORG.clinic + ' สงวนลิขสิทธิ์</div></footer>';
+}
+function manualUrl() { return (S.boot && S.boot.texts && S.boot.texts.manualUrl) || ORG.manual; }
+function helpBtn() { return '<button class="iconbtn helpbtn" data-help-inline aria-label="วิธีใช้หน้านี้" title="วิธีใช้หน้านี้">' + IC.help + '</button>'; }
+function bindHelp(root) { $$('[data-help-inline]', root).forEach(function (b) { b.onclick = function () { openHelp(S.page); }; }); }
+var HELP = {
+  today: ['รายงานประจำวัน', [
+    ['ยอดผู้ป่วยขึ้นเอง', 'ระบบดึงจำนวนผู้ป่วยแยกแพทย์และคลินิกจากระบบโรงพยาบาลทุก 30 นาที และทุก 5 นาทีขณะเปิดหน้านี้ไว้ กด "อัปเดตเดี๋ยวนี้" ถ้าต้องการทันที'],
+    ['คีย์หัตถการ', 'กด + / − หรือพิมพ์ตัวเลข ระบบบันทึกเองภายในไม่กี่วินาที (มุมการ์ดขึ้น "บันทึกแล้ว") ไม่มีหัตถการเลย ให้ติ๊ก "วันนี้ไม่มีหัตถการ"'],
+    ['ผู้ป่วยส่งต่อ', 'กด "+ เพิ่ม" ในการ์ดผู้ป่วยส่งต่อ ใส่ชื่อ HN อายุ DX และ Ward/หน่วยงาน จำนวน Admit/Consult/Night OPD จะปรับตามรายชื่อให้เอง'],
+    ['เจ้าหน้าที่', 'ดึงจากตารางเวร SMC Duty อัตโนมัติ แก้ชื่อ ใส่คลินิก เพิ่ม/ลบได้ กด "ซิงก์ตารางเวร" เมื่อมีการแก้ตารางเวรภายหลัง'],
+    ['ส่งรายงาน', 'ปุ่มข้อความไลน์ · ภาพรายงาน · พิมพ์ A4 ในแถบแดงด้านบน เลือกได้ว่าจะแสดงรายชื่อเจ้าหน้าที่และข้อมูลผู้ป่วยหรือไม่'],
+    ['ย้อนหลัง', 'เปลี่ยนวันด้วยปุ่ม ‹ › หรือช่องวันที่ หรือเปิดจากเมนูปฏิทินย้อนหลัง ทุกการแก้ไขมีประวัติ']]],
+  cal: ['ปฏิทินย้อนหลัง', [
+    ['ดูภาพรวมทั้งเดือน', 'แต่ละวันบอกยอดผู้ป่วย และสถานะการคีย์หัตถการ: ครบ / ยังไม่คีย์'],
+    ['คีย์ย้อนหลัง', 'กดวันที่ ระบบพาไปหน้ารายงานประจำวันของวันนั้น คีย์ได้ตามปกติ'],
+    ['สีแถบล่าง', 'ความหนาแน่นของผู้ป่วยในวันนั้น สีเข้ม = ผู้ป่วยมาก']]],
+  rep: ['รายงาน', [
+    ['เลือกช่วงเวลา', 'วัน · เดือน · ไตรมาส · ปีงบประมาณ (ต.ค.–ก.ย.) · กำหนดเอง'],
+    ['ตัวกรอง', 'เลือกประเภทวัน กลุ่มคลินิก คลินิก หรือแพทย์ได้หลายรายการ พิมพ์ค้นหาในช่องได้ ทุกตัวเลข กราฟ และตารางเปลี่ยนตามทันที'],
+    ['ดูตาม', 'สลับมุมมองเป็นกลุ่มคลินิก / คลินิก / แพทย์ กดแถวในตารางหรือชิ้นในกราฟวงกลมเพื่อกรองต่อ'],
+    ['หัตถการและยอดอื่น ๆ', 'คีย์เป็นยอดรวมทั้งคลินิกพิเศษ จึงไม่แยกตามคลินิกหรือแพทย์ (มีป้ายบอกเมื่อใช้ตัวกรอง)'],
+    ['ส่งออก', 'ส่งออก Excel · พิมพ์ · สรุปส่งไลน์ ใช้ตัวกรองที่เลือกอยู่']]],
+  dash: ['แดชบอร์ด', [
+    ['ตัวกรองเดียวกับหน้ารายงาน', 'เลือกช่วงเวลา ประเภทวัน กลุ่มคลินิก คลินิก แพทย์ แล้วทุกกราฟเปลี่ยนตาม'],
+    ['ตัวเลขบนกราฟ', 'เปิด/ปิดได้ที่สวิตช์ "ตัวเลขบนกราฟ" ระบบจำค่าที่เลือกไว้'],
+    ['ชี้หรือแตะ', 'ชี้ที่แท่งกราฟ ชิ้นวงกลม หรือช่องปฏิทินเพื่อดูตัวเลข กดเพื่อกรองต่อ'],
+    ['ปฏิทินความหนาแน่น', 'แถว = วันในสัปดาห์ คอลัมน์ = สัปดาห์ สีเข้มขึ้น = ผู้ป่วยมากขึ้น ช่วงตัวเลขของแต่ละสีอยู่ใต้ปฏิทิน (คำนวณจากข้อมูลจริง)']]],
+  set: ['ตั้งค่า (แอดมิน)', [
+    ['คลินิก', 'เปิด/ปิดการนับ ตั้งชื่อย่อ ลำดับ (ปิด = ไม่แสดงและไม่นับทุกหน้า)'],
+    ['กลุ่มคลินิก', 'สร้างกลุ่ม ตั้งชื่อ เลือกสี แล้วเลือกกลุ่มให้แต่ละคลินิก ใช้กรองและสรุปในรายงาน/แดชบอร์ด'],
+    ['หัตถการ · ตำแหน่ง', 'เปิด/ปิด เปลี่ยนชื่อ เรียงลำดับ'],
+    ['ผู้ใช้', 'เพิ่มผู้ใช้ ระบบให้รหัสชั่วคราวครั้งเดียว ส่งให้เจ้าตัวทางช่องทางส่วนตัว · ลืมรหัสกด "ตั้งรหัสใหม่"'],
+    ['การเชื่อมต่อ', 'API โรงพยาบาล · SMC Duty · ข้อความท้ายระบบ · ลิงก์คู่มือ']]]
+};
+function openHelp(page) {
+  var h = HELP[page] || HELP.today;
+  $$('.helpdrawer').forEach(function (x) { x.remove(); });
+  var d = document.createElement('div'); d.className = 'helpdrawer'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-label', 'วิธีใช้');
+  d.innerHTML = '<div class="hd-in"><div class="hd-h"><div><div class="eyebrow">วิธีใช้หน้านี้</div><h3>' + esc(h[0]) + '</h3></div><button class="iconbtn" data-hclose aria-label="ปิด">' + IC.x + '</button></div>' +
+    '<ol class="hsteps">' + h[1].map(function (x) { return '<li><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></li>'; }).join('') + '</ol>' +
+    '<a class="btn btn-brand" href="' + esc(manualUrl()) + '" target="_blank" rel="noopener">' + IC.help + 'เปิดคู่มือฉบับเต็ม</a>' +
+    '<p class="xs muted" style="margin:0">ติดต่อประสานงาน: ' + esc((S.boot && S.boot.texts.contact) || ORG.contact) + '</p></div>';
+  var close = function () { d.remove(); document.removeEventListener('keydown', key); };
+  var key = function (e) { if (e.key === 'Escape') close(); };
+  d.addEventListener('click', function (e) { if (e.target === d || e.target.closest('[data-hclose]')) close(); });
+  document.addEventListener('keydown', key);
+  document.body.appendChild(d); $('[data-hclose]', d).focus();
+}
+/** ประเภทวัน (ตรงกับหลังบ้าน): W วันทำการ · S เสาร์–อาทิตย์ · H นักขัตฤกษ์/ชดเชย · C ปิดคลินิก */
+function dayTypeOf(iso) {
+  var c = ((S.boot && S.boot.calendar) || {})[iso], w = pd(iso).getDay(), we = w === 0 || w === 6;
+  if (c) { var t = String(c[0] || ''); if (t === 'ปิดคลินิก') return 'C'; if (t === 'วันหยุด' || t === 'วันหยุดชดเชย') return we ? 'S' : 'H'; if (t === 'วันทำการ') return 'W'; }
+  return we ? 'S' : 'W';
 }
 
 /* ---------------- เริ่มทำงาน ---------------- */
