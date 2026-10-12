@@ -7,7 +7,7 @@ var IS_DEMO = (typeof API_URL !== 'undefined' && API_URL === 'demo');
 var ORG = {
   system: 'ระบบรายงานผลการปฏิบัติงานประจำวัน', clinic: 'คลินิกพิเศษเฉพาะทางนอกเวลา', hosp: 'โรงพยาบาลสมเด็จพระบรมราชเทวี ณ ศรีราชา', trc: 'สภากาชาดไทย',
   en: 'Special Medical Clinic – Queen Savang Vadhana Memorial Hospital, Thai Red Cross Society', abbr: 'SMC-QSMH',
-  contact: 'เจ้าหน้าที่ประสานงาน โทรภายใน 13507', updated: '9 ต.ค. 2569', year: '2569',
+  contact: 'เจ้าหน้าที่ประสานงาน โทรภายใน 13507', updated: '12 ต.ค. 2569', year: '2569',
   manual: 'https://claude.ai/artifact/TpQsQi6zm1uj5VboEyNn4V'
 };
 
@@ -76,6 +76,10 @@ var IC = {
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   tag: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.4"/></svg>',
+  card: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3 10h18M7 15h4"/></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M12 11v6M12 7.6v.4"/></svg>',
+  unit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>',
   inbox: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg>'
 };
 
@@ -86,7 +90,7 @@ var S = { token: null, me: null, boot: null, page: 'today', date: null };
 var NET = { active: 0, queue: [], MAX: 4, busy: 0 };
 function netSlot() { return new Promise(function (res) { if (NET.active < NET.MAX) { NET.active++; res(); } else NET.queue.push(res); }); }
 function netDone() { var n = NET.queue.shift(); if (n) n(); else NET.active = Math.max(0, NET.active - 1); }
-var ACT_TH = { getMonths: 'กำลังโหลดข้อมูลรายงาน', getCases: 'กำลังโหลดรายชื่อผู้ป่วยส่งต่อ', saveCase: 'กำลังบันทึกผู้ป่วยส่งต่อ', saveGroups: 'กำลังบันทึกกลุ่มคลินิก', login: 'กำลังเข้าสู่ระบบ', bootstrap: 'กำลังโหลดข้อมูลตั้งต้น', getDay: 'กำลังโหลดรายงาน', refreshDay: 'กำลังดึงยอดล่าสุดจากระบบ รพ.', getRoster: 'กำลังดึงตารางเวรจาก SMC Duty', saveEntry: 'กำลังบันทึก', saveStaff: 'กำลังบันทึกรายชื่อ', addItem: 'กำลังเพิ่มรายการ',
+var ACT_TH = { getRightsMonths: 'กำลังโหลดข้อมูลสิทธิการรักษา', getPersons: 'กำลังนับผู้ป่วยไม่ซ้ำคน', reconcileDay: 'กำลังดึงข้อมูลทวนสอบจากระบบ รพ.', revealCases: 'กำลังโหลดข้อมูลผู้ป่วย', saveUnits: 'กำลังบันทึกหน่วยงาน', saveRights: 'กำลังบันทึกกลุ่มสิทธิ', getDevices: 'กำลังโหลดรายการเครื่อง', getMonths: 'กำลังโหลดข้อมูลรายงาน', getCases: 'กำลังโหลดรายชื่อผู้ป่วยส่งต่อ', saveCase: 'กำลังบันทึกผู้ป่วยส่งต่อ', saveGroups: 'กำลังบันทึกกลุ่มคลินิก', login: 'กำลังเข้าสู่ระบบ', bootstrap: 'กำลังโหลดข้อมูลตั้งต้น', getDay: 'กำลังโหลดรายงาน', refreshDay: 'กำลังดึงยอดล่าสุดจากระบบ รพ.', getRoster: 'กำลังดึงตารางเวรจาก SMC Duty', saveEntry: 'กำลังบันทึก', saveStaff: 'กำลังบันทึกรายชื่อ', addItem: 'กำลังเพิ่มรายการ',
   getMonth: 'กำลังโหลดปฏิทิน', getReport: 'กำลังสรุปรายงาน', getDashboard: 'กำลังสรุปแดชบอร์ด', getAdmin: 'กำลังโหลดการตั้งค่า', testApi: 'กำลังทดสอบ API', testDuty: 'กำลังทดสอบ SMC Duty', getAudit: 'กำลังโหลดประวัติ' };
 var ACTS = {}, actTimer = null;
 function netBar(d, action) {
@@ -304,10 +308,11 @@ function renderLogin(msg) {
     (IS_DEMO ? '<div class="demo"><b>บัญชีทดลอง</b> รหัสผ่าน <b>demo1234</b> ทุกบัญชี<div class="row"><button type="button" class="btn btn-sm" data-u="nurse.smc">พยาบาล</button><button type="button" class="btn btn-sm" data-u="exec">ผู้บริหาร</button><button type="button" class="btn btn-sm" data-u="admin">แอดมิน</button></div></div>' : '') +
     '<label class="field" for="lu">ชื่อผู้ใช้<input id="lu" name="username" type="text" autocomplete="username" autocapitalize="none" required></label>' +
     pwField('lp', 'รหัสผ่าน', 'current-password', 'name="password"') +
-    '<label class="row small" for="lr"><input id="lr" type="checkbox" checked> จำการเข้าสู่ระบบ 30 วัน (เครื่องเคาน์เตอร์)</label>' +
+    '<label class="row small" for="lr"><input id="lr" type="checkbox" checked> จำเครื่องนี้ (ไม่ต้องเข้าสู่ระบบทุกครั้ง · ใช้กับเครื่องส่วนตัว/เคาน์เตอร์)</label>' +
     '<button class="btn btn-brand btn-lg" id="lb" type="submit" style="justify-content:center">เข้าสู่ระบบ</button>' +
     '<p class="small" id="lhint" hidden style="margin:0;color:var(--warn)">เซิร์ฟเวอร์ Google กำลังเริ่มทำงาน ครั้งแรกของวันอาจใช้ 5–15 วินาที ครั้งต่อไปจะเร็วขึ้น</p>' +
     '<p class="small muted" style="margin:0">ขอรหัสเข้าใช้งานหรือลืมรหัสผ่าน ติดต่อ' + esc(ORG.contact) + '</p>' +
+    '<p class="xs muted pdpa" style="margin:0">' + IC.shield.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px;margin-right:4px"') + 'ระบบบันทึกการเข้าใช้งาน (ผู้ใช้ เวลา และชนิดอุปกรณ์) เพื่อความปลอดภัยของข้อมูลตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 · ใช้ข้อมูลผู้ป่วยเฉพาะเพื่อการปฏิบัติงานเท่านั้น</p>' +
     '<a class="small" href="' + esc(ORG.manual) + '" target="_blank" rel="noopener" style="align-self:flex-start">' + IC.help.replace('<svg', '<svg width="15" height="15" style="vertical-align:-3px;margin-right:4px"') + 'คู่มือการใช้งาน</a></form>' + footerHtml(true) + '</section></div>';
   $$('[data-u]').forEach(function (b) { b.onclick = function () { $('#lu').value = b.getAttribute('data-u'); $('#lp').value = 'demo1234'; $('#lb').click(); }; });
   $('#lf').onsubmit = function (e) {
@@ -315,18 +320,41 @@ function renderLogin(msg) {
     var btn = $('#lb'), t0 = Date.now(); btn.disabled = true; btn.innerHTML = IC.spin + ' กำลังเข้าสู่ระบบ…';
     var tick = setInterval(function () { var s = Math.round((Date.now() - t0) / 1000); btn.innerHTML = IC.spin + ' กำลังเข้าสู่ระบบ… ' + s + ' วิ'; var h = $('#lhint'); if (h && s >= 6) h.hidden = false; }, 1000);
     var today = ds(new Date()), first = { action: 'getDay', payload: { date: today } };
-    api('login', { username: $('#lu').value, password: $('#lp').value, remember: $('#lr').checked, withBoot: true, first: first }).then(function (r) {
+    api('login', { username: $('#lu').value, password: $('#lp').value, remember: $('#lr').checked, withBoot: true, first: first, device: $('#lr').checked ? deviceId() : '', ua: navigator.userAgent }).then(function (r) {
       S.token = r.token; if (!IS_DEMO) store('token', r.token); applyBoot(r.boot);
       if (r.first) { var k = mkey('getDay', r.first.payload); MEMO[k] = r.first.data; MEMO_T[k] = Date.now(); }
       clearInterval(tick); S.date = today; startApp();
       if (r.mustChange) changePassword(true);
+      else if (r.needLabel) nameDevice(true);
     }).catch(function (err) { clearInterval(tick); btn.disabled = false; btn.textContent = 'เข้าสู่ระบบ'; var h = $('#lhint'); if (h) h.hidden = true; toast(err.message, true); });
   };
   bindEyes($('#lf'));
   if (!IS_DEMO) { try { rawCall('ping', {}).catch(function () { }); } catch (e) { } }   // ปลุกเซิร์ฟเวอร์ระหว่างพิมพ์รหัสผ่าน
   setTimeout(function () { var u = $('#lu'); if (u) u.focus(); }, 50);
 }
-function applyBoot(b) { S.boot = b; S.me = b.me; store('boot', b); }
+function applyBoot(b) {
+  // ข้อมูลรายเดือนที่เก็บในเครื่อง: ล้างเมื่อหลังบ้านปรับข้อมูลย้อนหลัง (packVer เปลี่ยน เช่น ตัดยอด VN ที่ยกเลิก)
+  try { var pv = store('packVer'); if (b.packVer && pv !== b.packVer) { Object.keys(localStorage).forEach(function (k) { if (/^smcd:c:.*\|(mp|rm)\|/.test(k) || /^smcd:c:.*:(mp|rm)\|/.test(k)) localStorage.removeItem(k); }); store('packVer', b.packVer); } } catch (e) { }
+  S.boot = b; S.me = b.me; store('boot', b);
+}
+/** รหัสเครื่อง (สุ่มครั้งแรก เก็บในเครื่อง) → แอดมินดู/ยกเลิกเครื่องได้ */
+function deviceId() {
+  var d = store('devId'); if (d && /^[a-zA-Z0-9]{16,32}$/.test(d)) return d;
+  var a = new Uint8Array(12); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach(function (x, i) { a[i] = Math.random() * 256; });
+  d = 'd' + Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); store('devId', d); return d;
+}
+/** ตั้งชื่อเครื่อง (ผู้บริหารใช้บัญชีร่วม → รู้ว่าใครเข้าดูจากเครื่องไหน) */
+function nameDevice(first) {
+  var cur = (S.me && S.me.device && S.me.device.label) || '';
+  var m = modal(first ? 'ตั้งชื่อเครื่องนี้' : 'ชื่อเครื่องนี้', '<form id="ndf" style="display:flex;flex-direction:column;gap:12px"><p class="small" style="margin:0">ตั้งชื่อเพื่อให้แอดมินรู้ว่าเครื่องนี้เป็นของใคร (บัญชีนี้ใช้ร่วมกันหลายท่าน) · ระบบจำเครื่องนี้ไว้ 90 วัน</p>' +
+    '<label class="field" for="ndn">ชื่อเครื่อง<input id="ndn" type="text" maxlength="40" value="' + esc(cur) + '" placeholder="เช่น iPad ผอ. / มือถือ รอง ผอ.ฝ่ายการพยาบาล" required></label>' +
+    '<button class="btn btn-brand" type="submit" style="align-self:flex-end">บันทึก</button></form>', '', 'sm');
+  setTimeout(function () { var i = $('#ndn', m); if (i) i.focus(); }, 60);
+  $('#ndf', m).onsubmit = function (e) {
+    e.preventDefault();
+    busy($('#ndf button', m), api('saveDeviceLabel', { label: $('#ndn', m).value, _rid: rid() }), 'กำลังบันทึก…').then(function (r) { S.me.device = { label: r.label }; m.close(); toast('ตั้งชื่อเครื่องแล้ว'); }).catch(function (er) { toast(er.message, true); });
+  };
+}
 function changePassword(forced) {
   var m = modal(forced ? 'ตั้งรหัสผ่านใหม่ก่อนใช้งาน' : 'เปลี่ยนรหัสผ่าน', '<form id="cpf" style="display:flex;flex-direction:column;gap:12px">' +
     (forced ? '<p class="small muted" style="margin:0">รหัสผ่านที่ได้รับเป็นรหัสชั่วคราว กรุณาตั้งรหัสใหม่อย่างน้อย 8 ตัว</p>' : '') +
@@ -360,7 +388,7 @@ function renderShell() {
     '<nav class="nav" aria-label="เมนูหลัก">' + nav.map(function (n) { return '<button data-go="' + n[0] + '">' + IC[n[2]] + n[1] + '</button>'; }).join('') + '</nav>' +
     '<button class="sidehelp" data-help>' + IC.help + 'วิธีใช้หน้านี้</button>' +
     '<div class="who"><div class="avatar">' + esc(initials(me.name)) + '</div><div style="min-width:0"><b>' + esc(me.name) + '</b><span class="r">' + ROLE_TH[me.role] + (me.role === 'exec' ? ' · ดูอย่างเดียว' : '') + '</span></div>' +
-    '<div class="tools"><button id="bpw" title="เปลี่ยนรหัสผ่าน" aria-label="เปลี่ยนรหัสผ่าน">' + IC.key + '</button><button id="bout" title="ออกจากระบบ" aria-label="ออกจากระบบ">' + IC.logout + '</button></div></div>' +
+    '<div class="tools">' + (me.device ? '<button id="bdev" title="ชื่อเครื่องนี้: ' + esc(me.device.label || 'ยังไม่ตั้งชื่อ') + '" aria-label="ชื่อเครื่องนี้">' + IC.shield + '</button>' : '') + '<button id="bpw" title="เปลี่ยนรหัสผ่าน" aria-label="เปลี่ยนรหัสผ่าน">' + IC.key + '</button><button id="bout" title="ออกจากระบบ" aria-label="ออกจากระบบ">' + IC.logout + '</button></div></div>' +
     '<div class="ver"><span class="livedot"></span>' + esc(b.app.short) + ' ' + esc(b.app.version) + ' · build ' + esc(b.app.build) + '</div></aside>' +
     '<header class="topbar"><div class="brand" style="padding:0"><div class="mark">' + IC.logo + '</div><b>SMC Daily</b></div><div class="row" style="flex-wrap:nowrap"><button class="iconbtn tb-help" data-help aria-label="วิธีใช้หน้านี้">' + IC.help + '</button><select id="mnav" aria-label="เมนู">' + nav.map(function (n) { return '<option value="' + n[0] + '">' + n[1] + '</option>'; }).join('') + '<option value="__pw">เปลี่ยนรหัสผ่าน</option><option value="__out">ออกจากระบบ</option></select></div></header>' +
     '<div class="content"><main class="main" id="main" tabindex="-1"></main>' + footerHtml() + '</div></div><div id="printArea"></div>';
@@ -368,6 +396,7 @@ function renderShell() {
   $('#mnav').onchange = function (e) { var v = e.target.value; if (v === '__pw') { changePassword(); e.target.value = S.page; } else if (v === '__out') logout(); else go(v); };
   $('#bout').onclick = function () { logout(); };
   $('#bpw').onclick = function () { changePassword(); };
+  var bd = $('#bdev'); if (bd) bd.onclick = function () { nameDevice(false); };
   $$('[data-help]').forEach(function (b) { b.onclick = function () { openHelp(S.page); }; });
 }
 function go(p, first) {
@@ -395,23 +424,37 @@ function checkVersion() {
 
 /* ---------------- ท้ายหน้า · วิธีใช้ · ประเภทวัน ---------------- */
 function footerHtml(login) {
+  var b = S.boot, contact = (b && b.texts && b.texts.contact) || ORG.contact, tel = (String(contact).match(/\d{4,}/) || [''])[0];
+  var ver = b ? b.app.version : '1.2569';
+  return '<footer class="appfoot' + (login ? ' onlogin' : '') + '"><span>SMC Daily ' + esc(ver) + ' · ' + ORG.clinic + ' รพ.สมเด็จพระบรมราชเทวี ณ ศรีราชา' + (tel ? ' · โทร ' + esc(tel) : '') + '</span>' +
+    '<button type="button" class="iconbtn infobtn" data-about aria-label="เกี่ยวกับระบบ" title="เกี่ยวกับระบบ">' + IC.info + '</button></footer>';
+}
+/** รายละเอียดระบบ (ย่อจากท้ายหน้าเดิม) */
+function openAbout() {
   var b = S.boot, contact = (b && b.texts && b.texts.contact) || ORG.contact;
   var ver = b ? b.app.version + ' (build ' + b.app.build + ')' : '1.2569' + (typeof FRONT_BUILD !== 'undefined' ? ' (build ' + FRONT_BUILD + ')' : '');
   var upd = b && b.app.buildTh ? String(b.app.buildTh).replace(/\s*\(.*\)\s*$/, '') : ORG.updated;
-  return '<footer class="appfoot' + (login ? ' onlogin' : '') + '"><div class="f1"><b>' + ORG.system + '</b> · SMC Daily เวอร์ชัน ' + esc(ver) + ' · ปรับปรุงล่าสุด ' + esc(upd) + '</div>' +
-    '<div>พัฒนาระบบโดย ' + ORG.clinic + ' ' + ORG.hosp + ' ' + ORG.trc + '</div><div class="en">' + ORG.en + ' (' + ORG.abbr + ')</div>' +
-    '<div>ติดต่อประสานงาน: ' + esc(contact) + ' · © ' + ORG.year + ' ' + ORG.clinic + ' สงวนลิขสิทธิ์</div></footer>';
+  modal('เกี่ยวกับระบบ', '<dl class="kvlist"><dt>ระบบ</dt><dd>' + ORG.system + ' (SMC Daily)</dd><dt>เวอร์ชัน</dt><dd>' + esc(ver) + ' · ปรับปรุงล่าสุด ' + esc(upd) + '</dd>' +
+    '<dt>หน่วยงาน</dt><dd>' + ORG.clinic + '<br>' + ORG.hosp + ' ' + ORG.trc + '<br><span class="xs muted">' + ORG.en + ' (' + ORG.abbr + ')</span></dd>' +
+    '<dt>ติดต่อประสานงาน</dt><dd>' + esc(contact) + '</dd><dt>คู่มือ</dt><dd><a href="' + esc(manualUrl()) + '" target="_blank" rel="noopener">เปิดคู่มือการใช้งาน</a></dd>' +
+    '<dt>ข้อมูลส่วนบุคคล</dt><dd class="small">ระบบบันทึกการเข้าใช้งานเพื่อความปลอดภัยตาม พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล · ไม่เก็บ HN ผู้ป่วยตัวจริง (แปลงเป็นรหัสย้อนกลับไม่ได้) · ข้อมูลผู้ป่วยส่งต่อเห็นเฉพาะผู้ที่ได้รับสิทธิ์</dd></dl>' +
+    '<p class="xs muted" style="margin:12px 0 0">พัฒนาระบบโดย ' + ORG.clinic + ' · © ' + ORG.year + ' สงวนลิขสิทธิ์</p>', '<button class="btn btn-brand" data-close>ปิด</button>', 'sm');
 }
+document.addEventListener('click', function (e) { var a = e.target.closest && e.target.closest('[data-about]'); if (a) openAbout(); });
 function manualUrl() { return (S.boot && S.boot.texts && S.boot.texts.manualUrl) || ORG.manual; }
 function helpBtn() { return '<button class="iconbtn helpbtn" data-help-inline aria-label="วิธีใช้หน้านี้" title="วิธีใช้หน้านี้">' + IC.help + '</button>'; }
 function bindHelp(root) { $$('[data-help-inline]', root).forEach(function (b) { b.onclick = function () { openHelp(S.page); }; }); }
 var HELP = {
   today: ['รายงานประจำวัน', [
-    ['ยอดผู้ป่วยขึ้นเอง', 'ระบบดึงจำนวนผู้ป่วยแยกแพทย์และคลินิกจากระบบโรงพยาบาลทุก 30 นาที และทุก 5 นาทีขณะเปิดหน้านี้ไว้ กด "อัปเดตเดี๋ยวนี้" ถ้าต้องการทันที'],
+    ['เลือกหน่วยงาน', 'แถบ "หน่วยงาน" ใต้แถบแดง: ทุกหน่วยงาน หรือเลือกหน่วยงานเพื่อดูและคีย์หัตถการ/ยอดอื่น/ผู้ป่วยส่งต่อ/เจ้าหน้าที่ของหน่วยนั้น'],
+    ['ยอดผู้ป่วยขึ้นเอง', 'ระบบดึงจำนวนผู้ป่วย (VN ไม่ซ้ำ ยอดยกเลิกตัดออกแล้ว) แยกกลุ่ม › คลินิก › แพทย์ จากระบบโรงพยาบาลทุก 30 นาที และทุก 5 นาทีขณะเปิดหน้านี้ กด "อัปเดตเดี๋ยวนี้" ถ้าต้องการทันที'],
+    ['สิทธิการรักษา', 'การ์ดสิทธิแสดง "ตามทะเบียน" (สิทธิหลักของผู้ป่วย) และ "ที่ชำระจริง" (สิทธิในรายการค่าใช้จ่าย) พร้อมสิทธิเดียว/สิทธิร่วม/เงินสด และบรรทัดตรวจยอดรวม'],
     ['คีย์หัตถการ', 'กด + / − หรือพิมพ์ตัวเลข ระบบบันทึกเองภายในไม่กี่วินาที (มุมการ์ดขึ้น "บันทึกแล้ว") ไม่มีหัตถการเลย ให้ติ๊ก "วันนี้ไม่มีหัตถการ"'],
     ['ผู้ป่วยส่งต่อ', 'กด "+ เพิ่ม" ในการ์ดผู้ป่วยส่งต่อ ใส่ชื่อ HN อายุ DX และ Ward/หน่วยงาน จำนวน Admit/Consult/Night OPD จะปรับตามรายชื่อให้เอง'],
     ['เจ้าหน้าที่', 'ดึงจากตารางเวร SMC Duty อัตโนมัติ แก้ชื่อ ใส่คลินิก เพิ่ม/ลบได้ กด "ซิงก์ตารางเวร" เมื่อมีการแก้ตารางเวรภายหลัง'],
-    ['ส่งรายงาน', 'ปุ่มข้อความไลน์ · ภาพรายงาน · พิมพ์ A4 ในแถบแดงด้านบน เลือกได้ว่าจะแสดงรายชื่อเจ้าหน้าที่และข้อมูลผู้ป่วยหรือไม่'],
+    ['จัดทำรายงาน', 'ปุ่มข้อความรายงาน · ภาพรายงาน · พิมพ์ A4 ในแถบแดง เลือกขอบเขต (หน่วยงานนี้/ทุกหน่วยงาน) และส่วนที่แสดงได้ หัตถการแสดงเฉพาะที่มียอด ท้ายรายงานมีชื่อ-ตำแหน่งผู้รายงาน'],
+    ['ภาพบนมือถือ', 'กด "แชร์ไปไลน์" หรือกดค้างที่ภาพเพื่อบันทึก/แชร์ (แอนดรอยด์คัดลอกภาพไม่ได้ ใช้แชร์แทน) · ถ้าเปิดจากในแอปไลน์ กด "เปิดใน Chrome/Safari"'],
+    ['ยอดเปลี่ยนหลังรายงาน', 'ถ้ายอดในระบบ รพ. เปลี่ยนหลังจัดทำรายงาน (เช่น ยกเลิก VN ย้อนหลัง) จะมีแถบเตือนบอกยอดเดิมและยอดใหม่'],
     ['ย้อนหลัง', 'เปลี่ยนวันด้วยปุ่ม ‹ › หรือช่องวันที่ หรือเปิดจากเมนูปฏิทินย้อนหลัง ทุกการแก้ไขมีประวัติ']]],
   cal: ['ปฏิทินย้อนหลัง', [
     ['ดูภาพรวมทั้งเดือน', 'แต่ละวันบอกยอดผู้ป่วย และสถานะการคีย์หัตถการ: ครบ / ยังไม่คีย์'],
@@ -421,7 +464,9 @@ var HELP = {
     ['เลือกช่วงเวลา', 'วัน · เดือน · ไตรมาส · ปีงบประมาณ (ต.ค.–ก.ย.) · กำหนดเอง'],
     ['ตัวกรอง', 'เลือกประเภทวัน กลุ่มคลินิก คลินิก หรือแพทย์ได้หลายรายการ พิมพ์ค้นหาในช่องได้ ทุกตัวเลข กราฟ และตารางเปลี่ยนตามทันที'],
     ['ดูตาม', 'สลับมุมมองเป็นกลุ่มคลินิก / คลินิก / แพทย์ กดแถวในตารางหรือชิ้นในกราฟวงกลมเพื่อกรองต่อ'],
-    ['หัตถการและยอดอื่น ๆ', 'คีย์เป็นยอดรวมทั้งคลินิกพิเศษ จึงไม่แยกตามคลินิกหรือแพทย์ (มีป้ายบอกเมื่อใช้ตัวกรอง)'],
+    ['หัตถการและยอดอื่น ๆ', 'คีย์แยกหน่วยงาน (กรองตามหน่วยงานได้) แต่ไม่แยกตามคลินิกหรือแพทย์ (มีป้ายบอกเมื่อใช้ตัวกรอง)'],
+    ['สิทธิการรักษา', 'ตามทะเบียน/ที่ชำระจริง · ตารางสิทธิแยกตามมุมมองที่เลือก · กรองตามกลุ่มสิทธิได้'],
+    ['ผู้ป่วยไม่ซ้ำคน', 'กด "นับผู้ป่วยไม่ซ้ำคน" เพื่อนับจำนวนคน (HN) ตามช่วงเวลาและตัวกรอง (มีข้อมูลตั้งแต่ระบบดึงสิทธิย้อนหลังเสร็จ)'],
     ['ส่งออก', 'ส่งออก Excel · พิมพ์ · สรุปส่งไลน์ ใช้ตัวกรองที่เลือกอยู่']]],
   dash: ['แดชบอร์ด', [
     ['ตัวกรองเดียวกับหน้ารายงาน', 'เลือกช่วงเวลา ประเภทวัน กลุ่มคลินิก คลินิก แพทย์ แล้วทุกกราฟเปลี่ยนตาม'],
@@ -429,11 +474,14 @@ var HELP = {
     ['ชี้หรือแตะ', 'ชี้ที่แท่งกราฟ ชิ้นวงกลม หรือช่องปฏิทินเพื่อดูตัวเลข กดเพื่อกรองต่อ'],
     ['ปฏิทินความหนาแน่น', 'แถว = วันในสัปดาห์ คอลัมน์ = สัปดาห์ สีเข้มขึ้น = ผู้ป่วยมากขึ้น ช่วงตัวเลขของแต่ละสีอยู่ใต้ปฏิทิน (คำนวณจากข้อมูลจริง)']]],
   set: ['ตั้งค่า (แอดมิน)', [
-    ['คลินิก', 'เปิด/ปิดการนับ ตั้งชื่อย่อ ลำดับ (ปิด = ไม่แสดงและไม่นับทุกหน้า)'],
+    ['คลินิก', 'เปิด/ปิดการนับ ตั้งชื่อย่อ ลำดับ หน่วยงาน สถานที่ และ "รวมแพทย์" (แสดงแพทย์ทุกท่านเป็นแถวเดียว เช่น ห้องปฏิบัติการ)'],
+    ['หน่วยงาน', 'สร้างหน่วยงานภายใน SMC (เช่น คลินิกชั้น 3 · ชั้น 6 · รังสีวิทยา · ทันตกรรม · แผนไทย) ตั้งรูปแบบรายงานตั้งต้น แล้วเลือกหน่วยงานให้คลินิก'],
+    ['สิทธิการรักษา', 'กลุ่มสิทธิ (ตาม SmartPremium + สิทธิเจ้าหน้าที่) ย้ายสิทธิข้ามกลุ่มได้ทุกเมื่อ รายงานย้อนหลังคำนวณใหม่ทันที'],
+    ['ทวนสอบรายวัน', 'ดึงข้อมูลจากระบบ รพ. สด ราย VN (HN ปิดบางหลัก) เทียบกับยอดในระบบ · ส่งออก Excel ได้'],
     ['กลุ่มคลินิก', 'สร้างกลุ่ม ตั้งชื่อ เลือกสี แล้วเลือกกลุ่มให้แต่ละคลินิก ใช้กรองและสรุปในรายงาน/แดชบอร์ด'],
     ['หัตถการ · ตำแหน่ง', 'เปิด/ปิด เปลี่ยนชื่อ เรียงลำดับ'],
-    ['ผู้ใช้', 'เพิ่มผู้ใช้ ระบบให้รหัสชั่วคราวครั้งเดียว ส่งให้เจ้าตัวทางช่องทางส่วนตัว · ลืมรหัสกด "ตั้งรหัสใหม่"'],
-    ['การเชื่อมต่อ', 'API โรงพยาบาล · SMC Duty · ข้อความท้ายระบบ · ลิงก์คู่มือ']]]
+    ['ผู้ใช้', 'เพิ่มผู้ใช้ ระบบให้รหัสชั่วคราวครั้งเดียว · ตั้งหน่วยงานที่สังกัด ชื่อและตำแหน่งบนรายงาน · ดู/ยกเลิกเครื่องที่จำไว้'],
+    ['การเชื่อมต่อ', 'API โรงพยาบาล (token) · SMC Duty · ตรวจยอดซ้ำย้อนหลัง · ช่วงงดดึงข้อมูล · ข้อความท้ายระบบ']]]
 };
 function openHelp(page) {
   var h = HELP[page] || HELP.today;
