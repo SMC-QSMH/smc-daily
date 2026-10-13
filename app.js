@@ -30,7 +30,7 @@ function stampTh(s) { if (!s) return ''; var p = s.split(' '); return thDate(p[0
 function fyOf(s) { var d = pd(s); return d.getFullYear() + (d.getMonth() >= 9 ? 1 : 0) + 543; }
 function qOf(s) { var m = pd(s).getMonth(); return m >= 9 ? 1 : m <= 2 ? 2 : m <= 5 ? 3 : 4; }
 function datesIn(a, b) { var o = []; for (var d = a; d <= b; d = addDays(d, 1)) o.push(d); return o; }
-function initials(n) { n = String(n || '').replace(/^(นพ\.|พญ\.|นาย|นาง|น\.ส\.|ทพ\.|ทพญ\.)/, '').trim(); return n.charAt(0) || '?'; }
+function initials(n) { n = typeof bareName === 'function' ? bareName(n) : String(n || '').trim(); return n.charAt(0) || '?'; }
 function debounce(fn, ms) { var t; return function () { var a = arguments, self = this; clearTimeout(t); t = setTimeout(function () { fn.apply(self, a); }, ms); }; }
 function store(k, v) { try { if (v === undefined) { var x = localStorage.getItem('smcd:' + k); return x ? JSON.parse(x) : null; } if (v === null) localStorage.removeItem('smcd:' + k); else localStorage.setItem('smcd:' + k, JSON.stringify(v)); } catch (e) { return null; } }
 function rid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }

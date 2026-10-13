@@ -111,3 +111,37 @@ function rgRows(map) {
   if (map['']) ids.push(''); if (map.none) ids.push('none');
   return ids.map(function (id) { return { id: id, name: rgName(id), v: map[id], color: rgColor(id), hex: id === 'none' ? '#c9c2c5' : rgHex(id) }; });
 }
+
+/* ---------- ชื่อคน (ครั้งที่ 5) ----------
+ * SMC Duty ส่งชื่อพร้อมคำนำหน้า เช่น "นาง สมศรี ใจดี" → ภาพย่อ/ข้อความใช้ "สมศรี"
+ * นาย/นาง/นางสาว/คุณ ต้องมีเว้นวรรคตามหลัง (กันชื่อจริงที่ขึ้นต้นด้วย "นาง") · คำย่อมีจุดติดชื่อได้ */
+var NAME_PFX = /^(?:(?:นางสาว|นาง|นาย|คุณ)\s+|(?:น\.ส\.|พว\.|พย\.|นพ\.|พญ\.|ทพญ\.|ทพ\.|ภญ\.|ภก\.|ดร\.|ว่าที่\s*ร\.?\s*ต\.?(?:\s*หญิง)?)\s*)+/;
+function personName(n) { return String(n || '').replace(/\s*\(ตัวอย่าง\)$/, '').replace(/\s+/g, ' ').trim(); }
+function bareName(n) { var s = personName(n), t = s.replace(NAME_PFX, '').trim(); return t || s; }
+function firstName(n) { return bareName(n).split(' ')[0]; }
+/** รายชื่อแบบสั้น: ชื่อต้น · ชื่อซ้ำกันเติมอักษรแรกของนามสกุล */
+function shortNames(list) {
+  var f = list.map(function (n) { return { b: bareName(n), f: firstName(n) }; }), cnt = {};
+  f.forEach(function (x) { cnt[x.f] = (cnt[x.f] || 0) + 1; });
+  return f.map(function (x) { var last = x.b.split(' ')[1]; return cnt[x.f] > 1 && last ? x.f + ' ' + last.charAt(0) + '.' : x.f; });
+}
+
+/* ---------- นับคลินิก / แพทย์ (ครั้งที่ 5) ----------
+ * แพทย์ = คนไม่ซ้ำ (รหัสแพทย์) · ไม่นับคลินิกที่ "รวมแพทย์" (เช่น LABOT เจาะเลือดล่วงหน้า)
+ * multi[รหัสแพทย์] = จำนวนคลินิกที่แพทย์ท่านนั้นตรวจในวันเดียวกัน (≥ 2) */
+function docStats(rows) {
+  var c = {}, d = {}, per = {}, multi = {};
+  rows.forEach(function (r) { c[r[0]] = 1; if (clinicMerged(r[0])) return; var k = r[3] || r[1]; d[k] = 1; (per[k] || (per[k] = {}))[r[0]] = 1; });
+  Object.keys(per).forEach(function (k) { var n = Object.keys(per[k]).length; if (n > 1) multi[k] = n; });
+  return { clinics: Object.keys(c).length, docs: Object.keys(d).length, multi: multi };
+}
+
+/* ---------- รูปแบบรายงาน (ครั้งที่ 5) ---------- */
+var REPORT_LEVELS = [['group', 'สรุปกลุ่ม'], ['clinic', 'กลุ่ม + คลินิก'], ['inline', 'คลินิก + แพทย์'], ['full', 'ตารางเต็ม']];
+var REPORT_LEVEL_TIP = { group: 'ยอดรวมแต่ละกลุ่มคลินิกอย่างเดียว', clinic: 'กลุ่มคลินิก และยอดแต่ละคลินิก', inline: 'คลินิก และรายชื่อแพทย์ต่อท้ายบรรทัดเดียว', full: 'แพทย์แยกแถว มีตัวเลขทุกแถว' };
+var REPORT_SECTIONS = [['rights', 'สิทธิการรักษา'], ['procs', 'หัตถการ'], ['refer', 'ผู้ป่วยส่งต่อ (Admit/Consult/Night OPD)'], ['staff', 'เจ้าหน้าที่']];
+/** ค่ามาตรฐานของหน่วยงาน (แอดมินตั้งที่ ตั้งค่า › หน่วยงาน) */
+function unitReportDef(u) {
+  var x = unitById(!u || u === ALL_UNITS ? defaultUnitId() : u), r = (x && x.report) || {};
+  return { level: REPORT_LEVELS.some(function (l) { return l[0] === r.level; }) ? r.level : 'inline', rights: r.rights !== false, procs: r.procs !== false, refer: r.refer !== false, staff: r.staff !== false };
+}

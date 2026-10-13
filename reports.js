@@ -317,7 +317,14 @@ function pageSet() {
   if (SET.tab === 'audit') return drawAudit();
   if (SET.tab === 'recon') return drawRecon();
   var ap = SET.tab === 'rights' ? { tab: 'rights' } : {};
-  api('getAdmin', ap, { onCache: function (d) { SET.data = d; drawSet(); } }).then(function (d) { SET.data = d; if (S.page === 'set') drawSet(); }).catch(function (e) { toast(e.message, true); });
+  // ครั้งที่ 5: ข้อมูลจากเซิร์ฟเวอร์มาทีหลังแคช → วาดใหม่เฉพาะเมื่อข้อมูลต่าง และผู้ใช้ยังไม่ได้เริ่มแก้ (กันค่าที่กำลังแก้หาย)
+  SET.dirty = false; var tab0 = SET.tab, shown = null;
+  if (!SET.dirtyBound) { SET.dirtyBound = true; ['input', 'change'].forEach(function (ev) { document.addEventListener(ev, function (e) { if (S.page === 'set' && e.target && e.target.closest && e.target.closest('#main .card')) SET.dirty = true; }, true); }); }
+  api('getAdmin', ap, { onCache: function (d) { SET.data = d; shown = JSON.stringify(d); drawSet(); } }).then(function (d) {
+    var fresh = JSON.stringify(d); SET.data = d;
+    if (S.page !== 'set' || SET.tab !== tab0 || fresh === shown) return;
+    if (!SET.dirty) drawSet(); else toast('มีข้อมูลใหม่จากเซิร์ฟเวอร์ · บันทึกสิ่งที่แก้ก่อน แล้วระบบจะแสดงข้อมูลล่าสุด');
+  }).catch(function (e) { toast(e.message, true); });
 }
 function refreshBoot() { return api('bootstrap', {}).then(function (b) { applyBoot(b); }); }
 function saveBtn(id, label) { return '<div class="row" style="justify-content:flex-end;margin-top:14px"><span class="small muted" id="' + id + 'msg"></span><button class="btn btn-brand" id="' + id + '">' + (label || 'บันทึกการเปลี่ยนแปลง') + '</button></div>'; }
@@ -491,7 +498,7 @@ function drawAudit() {
 
 /* ---------- หน่วยงาน ---------- */
 function drawUnits(b, d) {
-  var units = d.units.map(function (u) { return { id: u.id, name: u.name, color: u.color, scope: u.scope }; });
+  var units = d.units.map(function (u) { return { id: u.id, name: u.name, color: u.color, scope: u.scope, report: u.report || unitReportDef(u.id) }; });
   var assign = {}; d.clinics.forEach(function (c) { assign[c.code] = c.unitId || ''; });
   var q = '', onlyNone = false, tmp = 0;
   var draw = function () {
@@ -504,7 +511,9 @@ function drawUnits(b, d) {
           '<input type="text" data-un="' + i + '" value="' + esc(u.name) + '" maxlength="60" placeholder="ชื่อหน่วยงาน เช่น แผนไทย" aria-label="ชื่อหน่วยงาน">' +
           '<select data-us="' + i + '" aria-label="รูปแบบรายงานตั้งต้น" title="รูปแบบรายงานตั้งต้นเมื่อเจ้าหน้าที่หน่วยนี้จัดทำรายงาน">' + Object.keys(SCOPE_TH).map(function (k) { return '<option value="' + k + '"' + (u.scope === k ? ' selected' : '') + '>รายงาน: ' + SCOPE_TH[k] + '</option>'; }).join('') + '</select>' +
           '<span class="chip idle">' + (cnt[u.id] || 0) + ' คลินิก</span>' + (u.id === 'U1' ? '<span class="chip brand">หน่วยงานหลัก</span>' : '') +
-          '<span class="row" style="flex-wrap:nowrap"><button class="iconbtn" data-uup="' + i + '" aria-label="เลื่อนขึ้น"' + (i === 0 ? ' disabled' : '') + '>' + IC.up + '</button><button class="iconbtn" data-udn="' + i + '" aria-label="เลื่อนลง"' + (i === units.length - 1 ? ' disabled' : '') + '>' + IC.down + '</button>' + (u.id === 'U1' ? '' : '<button class="iconbtn" data-ux="' + i + '" aria-label="ลบหน่วยงาน">' + IC.trash + '</button>') + '</span></div>';
+          '<span class="row" style="flex-wrap:nowrap"><button class="iconbtn" data-uup="' + i + '" aria-label="เลื่อนขึ้น"' + (i === 0 ? ' disabled' : '') + '>' + IC.up + '</button><button class="iconbtn" data-udn="' + i + '" aria-label="เลื่อนลง"' + (i === units.length - 1 ? ' disabled' : '') + '>' + IC.down + '</button>' + (u.id === 'U1' ? '' : '<button class="iconbtn" data-ux="' + i + '" aria-label="ลบหน่วยงาน">' + IC.trash + '</button>') + '</span>' +
+          '<div class="urep"><span class="xs muted">รายงานมาตรฐาน</span><select data-ulv="' + i + '" aria-label="ระดับรายละเอียดมาตรฐาน">' + REPORT_LEVELS.map(function (l) { return '<option value="' + l[0] + '"' + (u.report.level === l[0] ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' +
+            REPORT_SECTIONS.map(function (s2) { return '<label class="row xs"><input type="checkbox" data-urs="' + i + '" data-k="' + s2[0] + '"' + (u.report[s2[0]] !== false ? ' checked' : '') + '> ' + esc(s2[1].replace(/ \(.*\)$/, '')) + '</label>'; }).join('') + '</div></div>';
       }).join('') + '</div>' +
       '<div class="row" style="margin:10px 0 18px"><button class="btn" id="uadd2">' + IC.plus + 'เพิ่มหน่วยงาน</button></div>' +
       '<div class="row" style="justify-content:space-between;margin-bottom:8px"><b>เลือกหน่วยงานให้คลินิก</b><div class="row"><input type="search" id="uq" placeholder="ค้นหาคลินิก/สถานที่" value="' + esc(q) + '" aria-label="ค้นหาคลินิก"><label class="row small" for="unone"><input type="checkbox" id="unone"' + (onlyNone ? ' checked' : '') + '> เฉพาะที่ยังไม่ระบุ</label></div></div>' +
@@ -512,11 +521,13 @@ function drawUnits(b, d) {
       cl.map(function (c) { return '<tr><td><span class="code">' + esc(c.code) + '</span> ' + esc(c.short) + (c.show ? '' : ' <span class="chip idle">ซ่อน</span>') + '</td><td class="small">' + esc(c.location || c.locAuto) + '</td><td class="small muted">' + esc(c.name) + '</td><td class="num">' + fmt(c.vn, 0) + '</td><td><select data-ua="' + esc(c.code) + '" aria-label="หน่วยงานของ ' + esc(c.code) + '">' + opts(assign[c.code]) + '</select></td></tr>'; }).join('') + '</tbody></table></div>' + saveBtn('sv');
     $$('[data-un]', b).forEach(function (x) { x.oninput = function () { units[+x.getAttribute('data-un')].name = x.value; }; x.onchange = draw; });
     $$('[data-us]', b).forEach(function (x) { x.onchange = function () { units[+x.getAttribute('data-us')].scope = x.value; }; });
+    $$('[data-ulv]', b).forEach(function (x) { x.onchange = function () { units[+x.getAttribute('data-ulv')].report.level = x.value; }; });
+    $$('[data-urs]', b).forEach(function (x) { x.onchange = function () { units[+x.getAttribute('data-urs')].report[x.getAttribute('data-k')] = x.checked; }; });
     $$('[data-uc]', b).forEach(function (x) { x.onclick = function () { units[+x.getAttribute('data-uc')].color = x.getAttribute('data-hex'); draw(); }; });
     $$('[data-uup]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-uup'), t2 = units[i]; units[i] = units[i - 1]; units[i - 1] = t2; draw(); }; });
     $$('[data-udn]', b).forEach(function (x) { x.onclick = function () { var i = +x.getAttribute('data-udn'), t2 = units[i]; units[i] = units[i + 1]; units[i + 1] = t2; draw(); }; });
     $$('[data-ux]', b).forEach(function (x) { x.onclick = function () { var u = units[+x.getAttribute('data-ux')]; units.splice(+x.getAttribute('data-ux'), 1); Object.keys(assign).forEach(function (k) { if (assign[k] === u.id) assign[k] = ''; }); draw(); toast('ลบหน่วยงาน "' + (u.name || '') + '" แล้ว (กดบันทึกเพื่อยืนยัน)'); }; });
-    $('#uadd2', b).onclick = function () { var used = units.map(function (g) { return g.color; }), col = PAL_HEX.filter(function (h) { return used.indexOf(h) < 0; })[0] || PAL_HEX[units.length % 8]; units.push({ id: 'new' + (++tmp), name: '', color: col, scope: 'own' }); draw(); var ins = $$('[data-un]', b); if (ins.length) ins[ins.length - 1].focus(); };
+    $('#uadd2', b).onclick = function () { var used = units.map(function (g) { return g.color; }), col = PAL_HEX.filter(function (h) { return used.indexOf(h) < 0; })[0] || PAL_HEX[units.length % 8]; units.push({ id: 'new' + (++tmp), name: '', color: col, scope: 'own', report: { level: 'inline', rights: true, procs: true, refer: true, staff: true } }); draw(); var ins = $$('[data-un]', b); if (ins.length) ins[ins.length - 1].focus(); };
     $('#uq', b).oninput = debounce(function (e) { q = e.target.value; draw(); var x = $('#uq', b); x.focus(); x.setSelectionRange(q.length, q.length); }, 250);
     $('#unone', b).onchange = function (e) { onlyNone = e.target.checked; draw(); };
     $$('[data-ua]', b).forEach(function (x) { x.onchange = function () { assign[x.getAttribute('data-ua')] = x.value; }; });
