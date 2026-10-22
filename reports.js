@@ -309,14 +309,14 @@ function drawDash() {
    ===================================================================== */
 var SET = { tab: 'clinics', data: null };
 function pageSet() {
-  var tabs = [['clinics', 'คลินิก'], ['units', 'หน่วยงาน'], ['groups', 'กลุ่มคลินิก'], ['rights', 'สิทธิการรักษา'], ['items', 'หัตถการ'], ['pos', 'ตำแหน่งเจ้าหน้าที่'], ['users', 'ผู้ใช้และเครื่อง'], ['conn', 'การเชื่อมต่อ'], ['backfill', 'ข้อมูลย้อนหลัง'], ['recon', 'ทวนสอบรายวัน'], ['audit', 'ประวัติ']];
+  var tabs = [['clinics', 'คลินิก'], ['units', 'หน่วยงาน'], ['groups', 'กลุ่มคลินิก'], ['rights', 'สิทธิการรักษา'], ['items', 'หัตถการ'], ['pos', 'ตำแหน่งเจ้าหน้าที่'], ['users', 'ผู้ใช้และเครื่อง'], ['conn', 'การเชื่อมต่อ'], ['backfill', 'ข้อมูลย้อนหลัง'], ['sv', 'ส่งเวรตรวจการ'], ['recon', 'ทวนสอบรายวัน'], ['audit', 'ประวัติ']];
   $('#main').innerHTML = banners() + '<div class="pagehead rise"><div><div class="eyebrow">ตั้งค่า · แอดมิน</div><h1>' + tabs.filter(function (t) { return t[0] === SET.tab; })[0][1] + '</h1></div><div class="row">' + helpBtn() + '</div></div>' +
     '<div class="tabs" role="tablist">' + tabs.map(function (t) { return '<button role="tab" data-st="' + t[0] + '" aria-selected="' + (SET.tab === t[0]) + '">' + t[1] + '</button>'; }).join('') + '</div><section class="card rise d1" style="padding:18px" id="setBody"><div class="skel" style="height:240px"></div></section>';
   $$('[data-st]').forEach(function (b) { b.onclick = function () { SET.tab = b.getAttribute('data-st'); pageSet(); }; });
   bindHelp($('#main'));
   if (SET.tab === 'audit') return drawAudit();
   if (SET.tab === 'recon') return drawRecon();
-  var ap = SET.tab === 'rights' ? { tab: 'rights' } : {};
+  var ap = SET.tab === 'rights' || SET.tab === 'sv' ? { tab: 'rights' } : {};
   // ครั้งที่ 5: ข้อมูลจากเซิร์ฟเวอร์มาทีหลังแคช → วาดใหม่เฉพาะเมื่อข้อมูลต่าง และผู้ใช้ยังไม่ได้เริ่มแก้ (กันค่าที่กำลังแก้หาย)
   SET.dirty = false; var tab0 = SET.tab, shown = null;
   if (!SET.dirtyBound) { SET.dirtyBound = true; ['input', 'change'].forEach(function (ev) { document.addEventListener(ev, function (e) { if (S.page === 'set' && e.target && e.target.closest && e.target.closest('#main .card')) SET.dirty = true; }, true); }); }
@@ -350,6 +350,8 @@ function drawSet() {
     drawUnits(b, d);
   } else if (t === 'rights') {
     drawRightsSet(b, d);
+  } else if (t === 'sv') {
+    drawSvSet(b, d);
   } else if (t === 'groups') {
     drawGroups(b, d);
   } else if (t === 'items') {

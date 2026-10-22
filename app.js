@@ -39,6 +39,8 @@ var REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)'
 var IC = {
   logo: '<svg viewBox="0 0 32 32" fill="none"><path d="M3 17h6l3-7 4 14 4-11 2 4h7" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   today: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6M8 4H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/><path d="M7 13h2l1.5-3 2 6 1.5-3h3"/></svg>',
+  sv: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M3.5 9h17M9 9v11M14.5 9v11M3.5 14.5h17"/></svg>',
+  grip: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>',
   cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
   rep: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h4"/></svg>',
   dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20V11M10 20V4M16 20v-6M22 20H2"/></svg>',
@@ -371,7 +373,7 @@ function changePassword(forced) {
   };
 }
 
-var PAGES = [['today', 'รายงานประจำวัน', 'today'], ['cal', 'ปฏิทินย้อนหลัง', 'cal'], ['rep', 'รายงาน', 'rep'], ['dash', 'แดชบอร์ด', 'dash'], ['set', 'ตั้งค่า', 'set']];
+var PAGES = [['today', 'รายงานประจำวัน', 'today'], ['sv', 'ส่งเวรตรวจการ', 'sv'], ['cal', 'ปฏิทินย้อนหลัง', 'cal'], ['rep', 'รายงาน', 'rep'], ['dash', 'แดชบอร์ด', 'dash'], ['set', 'ตั้งค่า', 'set']];
 function startApp() {
   var sticky = store('sticky:' + S.me.user);
   S.page = (sticky && Date.now() - sticky.t < 12 * 3600000) ? (sticky.page || 'today') : 'today';
@@ -406,7 +408,7 @@ function go(p, first) {
   $$('[data-go]').forEach(function (b) { if (b.getAttribute('data-go') === p) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
   var mn = $('#mnav'); if (mn) mn.value = p;
   tip.hide();
-  ({ today: pageToday, cal: pageCal, rep: pageRep, dash: pageDash, set: pageSet })[p]();
+  ({ today: pageToday, sv: pageSv, cal: pageCal, rep: pageRep, dash: pageDash, set: pageSet })[p]();
   if (!first) window.scrollTo(0, 0);
 }
 function banners() {
